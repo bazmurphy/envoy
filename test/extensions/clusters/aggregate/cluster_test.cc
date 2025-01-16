@@ -445,7 +445,11 @@ TEST_F(AggregateClusterTest, ContextDeterminePriorityLoad) {
   lb_->chooseHost(&lb_context);
 }
 
-TEST_F(AggregateClusterTest, CircuitBreakerTest) { initialize(default_yaml_config_); }
+TEST_F(AggregateClusterTest, CircuitBreakerTest) {
+
+  // init test
+  initialize(default_yaml_config_);
+}
 } // namespace Aggregate
 } // namespace Clusters
 } // namespace Extensions
