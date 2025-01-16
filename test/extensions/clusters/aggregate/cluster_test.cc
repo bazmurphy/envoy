@@ -445,6 +445,119 @@ TEST_F(AggregateClusterTest, ContextDeterminePriorityLoad) {
   lb_->chooseHost(&lb_context);
 }
 
+TEST_F(AggregateClusterTest, CircuitBreakerMaxConnectionsTest) {
+ // to test the "max_connections" config option
+ const std::string yaml_config = R"EOF(
+   name: aggregate_cluster
+   connect_timeout: 0.25s
+   lb_policy: CLUSTER_PROVIDED
+   circuit_breakers:
+     thresholds:
+     - priority: DEFAULT
+       max_connections: 1
+       track_remaining: true
+   cluster_type:
+     name: envoy.clusters.aggregate
+     typed_config:
+       "@type": type.googleapis.com/envoy.extensions.clusters.aggregate.v3.ClusterConfig
+       clusters:
+       - primary
+       - secondary
+)EOF";
+
+  initialize(yaml_config);
+  Upstream::HostSharedPtr primary_host = Upstream::makeTestHost(primary_info_, "tcp://127.0.0.1:80", simTime());
+
+  auto& resource_manager = cluster_->info()->resourceManager(Upstream::ResourcePriority::Default);
+
+  // these are the methods on the resourceManager
+
+  // resource_manager.connectionPools()
+  // resource_manager.connections()               // max_connections
+  // resource_manager.maxConnectionsPerHost()
+  // resource_manager.pendingRequests()           // max_pending_requests
+  // resource_manager.requests()                  // max_requests
+  // resource_manager.retries()                   // max_retries
+
+  // these are the methods on connections() from the resourceManager
+
+  // resource_manager.connections().canCreate()                       // returns a boolean if we can create more
+  // connections resource_manager.connections().count()               // this is the current value
+  // resource_manager.connections().dec()                             // this decrements the value (by 1)
+  // resource_manager.connections().decBy()                           // this decrements the value by X (whatever we give it)
+  // pass into the function) resource_manager.connections().inc()     // this increments the value (by 1)
+
+  // these are the circuit breaker stats we can use from statsScope()
+  
+  // cx_open              // connections circuit breaker state
+  // cx_pool_open         // connection pool circuit breaker state
+  // rq_open              // requests circuit breaker state
+  // rq_pending_open      // pending requests circuit breaker state
+  // rq_retry_open        // retry circuit breaker state
+  // remaining_cx         // remaining allowed connections
+  // remaining_cx_pools   // remaining allowed connection pools
+  // remaining_pending    // remaining allowed pending requests
+  // remaining_retries    // remaining allowed retries
+  // remaining_rq         // remaining allowed requests
+
+  Stats::StatNameManagedStorage cx_open_stat("circuit_breakers.default.cx_open", cluster_->info()->statsScope().symbolTable());
+  Stats::Gauge& cx_open = cluster_->info()->statsScope().gaugeFromStatName(cx_open_stat.statName(), Stats::Gauge::ImportMode::Accumulate);
+
+  Stats::StatNameManagedStorage remaining_cx_stat("circuit_breakers.default.remaining_cx", cluster_->info()->statsScope().symbolTable());
+  Stats::Gauge& remaining_cx = cluster_->info()->statsScope().gaugeFromStatName(remaining_cx_stat.statName(), Stats::Gauge::ImportMode::Accumulate);
+
+  // the circuit breaker should be closed
+  std::cout << "baz test 1a cx_open : " << std::boolalpha << cx_open.value() << std::endl;
+  EXPECT_EQ(0U, cx_open.value());
+  // there should be 1 remaining connection
+  std::cout << "baz test 1a remaining_cx : " << remaining_cx.value() << std::endl;
+  EXPECT_EQ(1U, remaining_cx.value());
+
+  // should be able to create connections
+  // std::cout << "baz test 1a max_connections : " << std::to_string(resource_manager.connections().max()) << std::endl;
+  // std::cout << "baz test 1a BEFORE connections canCreate : " << std::boolalpha << resource_manager.connections().canCreate() << std::endl;
+  // std::cout << "baz test 1a BEFORE connections count : " << std::to_string(resource_manager.connections().count()) << std::endl;
+
+  // we should be able to create the first connection
+  EXPECT_TRUE(resource_manager.connections().canCreate());
+  resource_manager.connections().inc();
+  EXPECT_CALL(primary_load_balancer_, chooseHost(_)).WillOnce(Return(primary_host));
+  Upstream::HostConstSharedPtr target = lb_->chooseHost(nullptr);
+  EXPECT_EQ(primary_host.get(), target.get());
+
+  // the circuit breaker should be open
+  std::cout << "baz test 1b cx_open : " << std::boolalpha << cx_open.value() << std::endl;
+  EXPECT_EQ(1U, cx_open.value());
+
+  // there should be 0 remaining connections
+  std::cout << "baz test 1a remaining_cx : " << remaining_cx.value() << std::endl;
+  EXPECT_EQ(0U, remaining_cx.value());
+
+  // should not be able to create anymore connections
+  // std::cout << "baz test 1b DURING connections canCreate : " << std::boolalpha << resource_manager.connections().canCreate() << std::endl;
+  // std::cout << "baz test 1b DURING connections count : " << std::to_string(resource_manager.connections().count()) << std::endl;
+
+  // we should not be able to create the second connection
+  EXPECT_FALSE(resource_manager.connections().canCreate());
+  EXPECT_CALL(primary_load_balancer_, chooseHost(_)).WillOnce(Return(nullptr));
+  target = lb_->chooseHost(nullptr);
+  EXPECT_EQ(nullptr, target);
+
+  resource_manager.connections().dec();
+
+  // the circuit breaker should be closed
+  std::cout << "baz test 1c cx_open : " << std::boolalpha << cx_open.value() << std::endl;
+  EXPECT_EQ(0U, cx_open.value());
+
+  // there should be 1 remaining connection
+  std::cout << "baz test 1a remaining_cx : " << remaining_cx.value() << std::endl;
+  EXPECT_EQ(1U, remaining_cx.value());
+
+  // should be able to create connections
+  // std::cout << "baz test 1c AFTER connections canCreate : " << std::boolalpha << resource_manager.connections().canCreate() << std::endl;
+  // std::cout << "baz test 1c AFTER connections count : " << std::to_string(resource_manager.connections().count()) << std::endl;
+}
+
 } // namespace Aggregate
 } // namespace Clusters
 } // namespace Extensions
