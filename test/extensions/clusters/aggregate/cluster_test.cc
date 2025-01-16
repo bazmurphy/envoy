@@ -448,6 +448,7 @@ TEST_F(AggregateClusterTest, ContextDeterminePriorityLoad) {
 TEST_F(AggregateClusterTest, CircuitBreakerTest) {
 
   // init test
+  // second line test
   initialize(default_yaml_config_);
 }
 } // namespace Aggregate
