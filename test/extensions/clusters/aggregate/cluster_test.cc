@@ -488,7 +488,7 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxConnectionsTest) {
   // pass into the function) resource_manager.connections().inc()     // this increments the value (by 1)
 
   // these are the circuit breaker stats we can use from statsScope()
-  
+
   // cx_open              // connections circuit breaker state
   // cx_pool_open         // connection pool circuit breaker state
   // rq_open              // requests circuit breaker state
@@ -530,7 +530,7 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxConnectionsTest) {
   EXPECT_EQ(1U, cx_open.value());
 
   // there should be 0 remaining connections
-  std::cout << "baz test 1a remaining_cx : " << remaining_cx.value() << std::endl;
+  std::cout << "baz test 1b remaining_cx : " << remaining_cx.value() << std::endl;
   EXPECT_EQ(0U, remaining_cx.value());
 
   // should not be able to create anymore connections
@@ -550,7 +550,7 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxConnectionsTest) {
   EXPECT_EQ(0U, cx_open.value());
 
   // there should be 1 remaining connection
-  std::cout << "baz test 1a remaining_cx : " << remaining_cx.value() << std::endl;
+  std::cout << "baz test 1c remaining_cx : " << remaining_cx.value() << std::endl;
   EXPECT_EQ(1U, remaining_cx.value());
 
   // should be able to create connections
