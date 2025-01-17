@@ -445,11 +445,58 @@ TEST_F(AggregateClusterTest, ContextDeterminePriorityLoad) {
   lb_->chooseHost(&lb_context);
 }
 
-TEST_F(AggregateClusterTest, CircuitBreakerTest) {
+TEST_F(AggregateClusterTest, CircuitBreakerTestInitialization) {
+  const std::string yaml_config_ = R"EOF(
+    name: aggregate_cluster
+    connect_timeout: 0.25s
+    lb_policy: CLUSTER_PROVIDED
+    cluster_type:
+      name: envoy.clusters.aggregate
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.clusters.aggregate.v3.ClusterConfig
+        clusters:
+        - primary
+        - secondary
+    circuit_breakers:
+        thresholds:
+          - priority: DEFAULT
+            max_connections: 1000
+            max_pending_requests: 1000
+            max_requests: 5000
+            max_retries: 3
+          - priority: HIGH
+            max_connections: 1000
+            max_pending_requests: 1000
+            max_requests: 5000
+            max_retries: 3
 
-  // init test
-  initialize(default_yaml_config_);
-}
+)EOF";
+  initialize(yaml_config_);
+
+  // Verify that the circuit breaker settings are correctly applied - Priority Default
+  EXPECT_EQ(
+      1000,
+      cluster_->info()->resourceManager(Upstream::ResourcePriority::Default).connections().max());
+  EXPECT_EQ(1000, cluster_->info()
+                      ->resourceManager(Upstream::ResourcePriority::Default)
+                      .pendingRequests()
+                      .max());
+  EXPECT_EQ(
+      5000,
+      cluster_->info()->resourceManager(Upstream::ResourcePriority::Default).requests().max());
+  EXPECT_EQ(3,
+            cluster_->info()->resourceManager(Upstream::ResourcePriority::Default).retries().max());
+
+  // Verify that the circuit breaker settings are correctly applied - Priority High
+  EXPECT_EQ(
+      1000,
+      cluster_->info()->resourceManager(Upstream::ResourcePriority::High).connections().max());
+  EXPECT_EQ(
+      1000,
+      cluster_->info()->resourceManager(Upstream::ResourcePriority::High).pendingRequests().max());
+  EXPECT_EQ(5000,
+            cluster_->info()->resourceManager(Upstream::ResourcePriority::High).requests().max());
+  EXPECT_EQ(3, cluster_->info()->resourceManager(Upstream::ResourcePriority::High).retries().max());
 } // namespace Aggregate
 } // namespace Clusters
 } // namespace Extensions
