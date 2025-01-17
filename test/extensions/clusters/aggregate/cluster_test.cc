@@ -497,6 +497,7 @@ TEST_F(AggregateClusterTest, CircuitBreakerTestInitialization) {
   EXPECT_EQ(5000,
             cluster_->info()->resourceManager(Upstream::ResourcePriority::High).requests().max());
   EXPECT_EQ(3, cluster_->info()->resourceManager(Upstream::ResourcePriority::High).retries().max());
+}
 } // namespace Aggregate
 } // namespace Clusters
 } // namespace Extensions
