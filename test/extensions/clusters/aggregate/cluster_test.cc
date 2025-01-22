@@ -169,6 +169,89 @@ public:
 )EOF";
 }; // namespace Aggregate
 
+TEST_F(AggregateClusterTest, CircuitBreakerTestBasic) {
+  const std::string yaml_config = R"EOF(
+    name: aggregate_cluster
+    connect_timeout: 0.25s
+    lb_policy: CLUSTER_PROVIDED
+    circuit_breakers:
+      thresholds:
+      - priority: DEFAULT
+        max_connections: 1
+    cluster_type:
+      name: envoy.clusters.aggregate
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.clusters.aggregate.v3.ClusterConfig
+        clusters:
+        - primary
+        - secondary
+)EOF";
+
+  initialize(yaml_config);
+
+  // resource manager for the DEFAULT priority (look above^)
+  Upstream::ResourceManager& resource_manager =
+      cluster_->info()->resourceManager(Upstream::ResourcePriority::Default);
+
+  Stats::StatNameManagedStorage cx_open_stat("circuit_breakers.default.cx_open",
+                                             cluster_->info()->statsScope().symbolTable());
+  Stats::Gauge& cx_open = cluster_->info()->statsScope().gaugeFromStatName(
+      cx_open_stat.statName(), Stats::Gauge::ImportMode::Accumulate);
+
+  // Stats::StatNameManagedStorage remaining_cx_stat("circuit_breakers.default.remaining_cx",
+  //                                                 cluster_->info()->statsScope().symbolTable());
+  // Stats::Gauge& remaining_cx = cluster_->info()->statsScope().gaugeFromStatName(
+  //     remaining_cx_stat.statName(), Stats::Gauge::ImportMode::Accumulate);
+
+  Stats::StatNameManagedStorage remaining_cx_stat("circuit_breakers.default.remaining_cx", cluster_->info()->statsScope().symbolTable());
+  Stats::Gauge& remaining_cx = cluster_->info()->statsScope().gaugeFromStatName(remaining_cx_stat.statName(), Stats::Gauge::ImportMode::Accumulate);
+
+  // check the config is set correctly and so we should have a max of 1 connection
+  EXPECT_EQ(1U, resource_manager.connections().max());
+
+  // check we can create a new connection
+  EXPECT_TRUE(resource_manager.connections().canCreate());
+
+  // check the connection count is 0
+  EXPECT_EQ(0U, resource_manager.connections().count());
+
+  // check the circuit breaker is closed
+  EXPECT_EQ(0U, cx_open.value());
+  
+  // check that we have one remaining connection
+  // EXPECT_EQ(1U, remaining_cx.value());
+
+  // add one connection
+  resource_manager.connections().inc();
+
+  // check the connection count is now 1
+  EXPECT_EQ(1U, resource_manager.connections().count());
+
+  // make sure we are NOT allowed to create anymore connections
+  EXPECT_FALSE(resource_manager.connections().canCreate());
+
+  // check the circuit breaker is now open
+  EXPECT_EQ(1U, cx_open.value());
+
+  // check the remaining connections (should be 0)
+  // EXPECT_EQ(0U, remaining_cx.value());
+
+  // remove the one connection
+  resource_manager.connections().dec();
+
+  // check the connection count is now 0
+  EXPECT_EQ(0U, resource_manager.connections().count());
+
+  // check that we can create a new connection again
+  EXPECT_TRUE(resource_manager.connections().canCreate());
+
+  // check that the circuit breaker is closed
+  EXPECT_EQ(0U, cx_open.value());
+
+  // check that we have should have one remaining connection
+  // EXPECT_EQ(1U, remaining_cx.value());
+}
+
 TEST_F(AggregateClusterTest, LoadBalancerTest) {
   initialize(default_yaml_config_);
   // Health value:
