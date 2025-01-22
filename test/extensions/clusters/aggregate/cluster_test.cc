@@ -209,16 +209,13 @@ TEST_F(AggregateClusterTest, CircuitBreakerTestBasic) {
   // check the yaml config is set correctly - we should have a maximum of 1 connection
   EXPECT_EQ(1U, resource_manager.connections().max());
 
-  // check we can create a new connection
-  EXPECT_TRUE(resource_manager.connections().canCreate());
-
-  // check the connection count is 0
-  EXPECT_EQ(0U, resource_manager.connections().count());
-
   // check the circuit breaker is closed
   EXPECT_EQ(0U, cx_open.value());
-
-  // check that we have one remaining connection
+  // check that we can create a new connection
+  EXPECT_TRUE(resource_manager.connections().canCreate());
+  // check the connection count is 0
+  EXPECT_EQ(0U, resource_manager.connections().count());
+  // check that we have 1 remaining connection
   EXPECT_EQ(1U, remaining_cx.value());
 
   // create that one connection
@@ -226,29 +223,23 @@ TEST_F(AggregateClusterTest, CircuitBreakerTestBasic) {
 
   // check the connection count is now 1
   EXPECT_EQ(1U, resource_manager.connections().count());
-
   // make sure we are NOT allowed to create anymore connections
   EXPECT_FALSE(resource_manager.connections().canCreate());
-
   // check the circuit breaker is now open
   EXPECT_EQ(1U, cx_open.value());
-
-  // check the remaining connections (should be 0)
+  // check that we have 0 remaining connections
   EXPECT_EQ(0U, remaining_cx.value());
 
   // remove that one connection
   resource_manager.connections().dec();
 
-  // check the connection count is now 0
+  // check the connection count is now 0 again
   EXPECT_EQ(0U, resource_manager.connections().count());
-
   // check that we can create a new connection again
   EXPECT_TRUE(resource_manager.connections().canCreate());
-
-  // check that the circuit breaker is closed
+  // check that the circuit breaker is closed again
   EXPECT_EQ(0U, cx_open.value());
-
-  // check that we have should have one remaining connection
+  // check that we have 1 remaining connection again
   EXPECT_EQ(1U, remaining_cx.value());
 }
 
