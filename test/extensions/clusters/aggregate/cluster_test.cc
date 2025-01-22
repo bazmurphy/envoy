@@ -206,7 +206,8 @@ TEST_F(AggregateClusterTest, CircuitBreakerTestBasic) {
   Stats::Gauge& remaining_cx = cluster_->info()->statsScope().gaugeFromStatName(
       remaining_cx_stat.statName(), Stats::Gauge::ImportMode::Accumulate);
 
-  // check the yaml config is set correctly - we should have a maximum of 1 connection
+  // check the yaml config is set correctly
+  // we should have a maximum of 1 connection available to use
   EXPECT_EQ(1U, resource_manager.connections().max());
 
   // check that we can create a new connection
