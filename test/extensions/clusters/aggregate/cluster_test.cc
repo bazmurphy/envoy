@@ -203,9 +203,6 @@ TEST_F(AggregateClusterTest, CircuitBreakerTestBasic) {
   // Stats::Gauge& remaining_cx = cluster_->info()->statsScope().gaugeFromStatName(
   //     remaining_cx_stat.statName(), Stats::Gauge::ImportMode::Accumulate);
 
-  Stats::StatNameManagedStorage remaining_cx_stat("circuit_breakers.default.remaining_cx", cluster_->info()->statsScope().symbolTable());
-  Stats::Gauge& remaining_cx = cluster_->info()->statsScope().gaugeFromStatName(remaining_cx_stat.statName(), Stats::Gauge::ImportMode::Accumulate);
-
   // check the config is set correctly and so we should have a max of 1 connection
   EXPECT_EQ(1U, resource_manager.connections().max());
 
@@ -217,7 +214,7 @@ TEST_F(AggregateClusterTest, CircuitBreakerTestBasic) {
 
   // check the circuit breaker is closed
   EXPECT_EQ(0U, cx_open.value());
-  
+
   // check that we have one remaining connection
   // EXPECT_EQ(1U, remaining_cx.value());
 
