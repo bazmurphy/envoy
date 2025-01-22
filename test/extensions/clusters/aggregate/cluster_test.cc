@@ -169,7 +169,7 @@ public:
 )EOF";
 }; // namespace Aggregate
 
-TEST_F(AggregateClusterTest, CircuitBreakerTestBasic) {
+TEST_F(AggregateClusterTest, CircuitBreakerMaxConnectionsTest) {
   const std::string yaml_config = R"EOF(
     name: aggregate_cluster
     connect_timeout: 0.25s
