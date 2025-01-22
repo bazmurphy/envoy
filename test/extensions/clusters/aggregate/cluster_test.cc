@@ -194,17 +194,19 @@ TEST_F(AggregateClusterTest, CircuitBreakerTestBasic) {
   Upstream::ResourceManager& resource_manager =
       cluster_->info()->resourceManager(Upstream::ResourcePriority::Default);
 
+  // get the cx_open stat (this represents the circuit breaker state: closed is 0, open is 1)
   Stats::StatNameManagedStorage cx_open_stat("circuit_breakers.default.cx_open",
                                              cluster_->info()->statsScope().symbolTable());
   Stats::Gauge& cx_open = cluster_->info()->statsScope().gaugeFromStatName(
       cx_open_stat.statName(), Stats::Gauge::ImportMode::Accumulate);
 
+  // get the reamining_cx stat (this represents the number of remaining connections)
   Stats::StatNameManagedStorage remaining_cx_stat("circuit_breakers.default.remaining_cx",
                                                   cluster_->info()->statsScope().symbolTable());
   Stats::Gauge& remaining_cx = cluster_->info()->statsScope().gaugeFromStatName(
       remaining_cx_stat.statName(), Stats::Gauge::ImportMode::Accumulate);
 
-  // check the config is set correctly and so we should have a max of 1 connection
+  // check the yaml config is set correctly - we should have a maximum of 1 connection
   EXPECT_EQ(1U, resource_manager.connections().max());
 
   // check we can create a new connection
@@ -219,7 +221,7 @@ TEST_F(AggregateClusterTest, CircuitBreakerTestBasic) {
   // check that we have one remaining connection
   EXPECT_EQ(1U, remaining_cx.value());
 
-  // add one connection
+  // create that one connection
   resource_manager.connections().inc();
 
   // check the connection count is now 1
@@ -234,7 +236,7 @@ TEST_F(AggregateClusterTest, CircuitBreakerTestBasic) {
   // check the remaining connections (should be 0)
   EXPECT_EQ(0U, remaining_cx.value());
 
-  // remove the one connection
+  // remove that one connection
   resource_manager.connections().dec();
 
   // check the connection count is now 0
