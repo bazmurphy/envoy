@@ -200,7 +200,8 @@ TEST_F(AggregateClusterTest, CircuitBreakerTestBasic) {
   Stats::Gauge& cx_open = cluster_->info()->statsScope().gaugeFromStatName(
       cx_open_stat.statName(), Stats::Gauge::ImportMode::Accumulate);
 
-  // get the reamining_cx stat (this represents the number of remaining connections)
+  // NOTE: in order to use remaining_cx (and for it to not always be 0) we need to use "track_remaining: true" in the config
+  // get the remaining_cx stat (this represents the number of remaining connections)
   Stats::StatNameManagedStorage remaining_cx_stat("circuit_breakers.default.remaining_cx",
                                                   cluster_->info()->statsScope().symbolTable());
   Stats::Gauge& remaining_cx = cluster_->info()->statsScope().gaugeFromStatName(
