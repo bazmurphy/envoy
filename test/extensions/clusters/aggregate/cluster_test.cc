@@ -169,6 +169,79 @@ public:
 )EOF";
 }; // namespace Aggregate
 
+TEST_F(AggregateClusterTest, CircuitBreakerPreventsChildClusterTraffic) {
+  const std::string yaml_config = R"EOF(
+    name: aggregate_cluster
+    connect_timeout: 0.25s
+    lb_policy: CLUSTER_PROVIDED
+    circuit_breakers:
+      thresholds:
+      - priority: DEFAULT
+        max_connections: 1
+    cluster_type:
+      name: envoy.clusters.aggregate
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.clusters.aggregate.v3.ClusterConfig
+        clusters:
+        - primary
+        - secondary
+  )EOF";
+
+  initialize(yaml_config);
+
+  Upstream::HostSharedPtr host =
+      Upstream::makeTestHost(primary_info_, "tcp://127.0.0.1:80", simTime());
+
+  {
+    testing::InSequence s;
+
+    // on the first call: the circuit breaker starts closed so the load balancer should return a host
+    EXPECT_CALL(primary_load_balancer_, chooseHost(_))
+        .WillOnce(Invoke([host](Upstream::LoadBalancerContext*) -> Upstream::HostSelectionResponse {
+          return {host};
+        }));
+
+    // on the second call: the circuit breaker is now open so the load balancer should not return a host
+    EXPECT_CALL(primary_load_balancer_, chooseHost(_))
+        .WillOnce(Invoke([host](Upstream::LoadBalancerContext*) -> Upstream::HostSelectionResponse {
+          return {nullptr};
+        }));
+
+    // on the third call: the circuit breaker is closed again so the load balancer should return a host
+    EXPECT_CALL(primary_load_balancer_, chooseHost(_))
+        .WillOnce(Invoke([host](Upstream::LoadBalancerContext*) -> Upstream::HostSelectionResponse {
+          return {host};
+        }));
+  }
+
+  Upstream::ResourceManager& resource_manager =
+      cluster_->info()->resourceManager(Upstream::ResourcePriority::Default);
+
+  // the circuit breaker starts closed, so we should be able to create new connections    
+  EXPECT_TRUE(resource_manager.connections().canCreate());
+
+  // first call to the load balancer: should return a host from the primary cluster
+  EXPECT_EQ(host.get(), lb_->chooseHost(nullptr).host.get());
+
+  // add a connection, the circuit breaker is now open
+  resource_manager.connections().inc();
+
+  // we should not be able to create anymore connections
+  EXPECT_FALSE(resource_manager.connections().canCreate());
+
+  // second call to the load balancer: should not return a host
+  EXPECT_EQ(nullptr, lb_->chooseHost(nullptr).host);
+
+  // remove the connection, the circuit breaker is now closed
+  resource_manager.connections().dec();
+
+  // we should be able to create new connections
+  EXPECT_TRUE(resource_manager.connections().canCreate());
+
+  // third call to the load balancer: should return a host from the primary cluster again
+  EXPECT_EQ(host.get(), lb_->chooseHost(nullptr).host.get());
+}
+
 TEST_F(AggregateClusterTest, LoadBalancerTest) {
   initialize(default_yaml_config_);
   // Health value:
