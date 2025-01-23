@@ -122,7 +122,7 @@ public:
     ON_CALL(secondary_, prioritySet()).WillByDefault(ReturnRef(secondary_ps_));
 
     setupPrioritySet();
-    
+
     EXPECT_CALL(*primary_info_, resourceManager(Upstream::ResourcePriority::Default)).Times(0);
     EXPECT_CALL(*secondary_info_, resourceManager(Upstream::ResourcePriority::Default)).Times(0);
 
@@ -132,6 +132,16 @@ public:
     thread_aware_lb_ = std::make_unique<AggregateThreadAwareLoadBalancer>(*cluster_);
     lb_factory_ = thread_aware_lb_->factory();
     lb_ = lb_factory_->create(lb_params_);
+  }
+
+  // NOTE: in order to use remaining_<name> (and for it to not always be 0)
+  // we need to use "track_remaining: true" in the config to get the remaining_<name> stat
+  Stats::Gauge& getCircuitBreakersStatByPriority(std::string priority, std::string stat) {
+    std::string stat_name_ = "circuit_breakers." + priority + "." + stat;
+    Stats::StatNameManagedStorage statStore(stat_name_,
+                                            cluster_->info()->statsScope().symbolTable());
+    return cluster_->info()->statsScope().gaugeFromStatName(statStore.statName(),
+                                                            Stats::Gauge::ImportMode::Accumulate);
   }
 
   NiceMock<Server::Configuration::MockServerFactoryContext> server_context_;
@@ -196,20 +206,10 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxConnectionsTest) {
   // resource manager for the DEFAULT priority (look above^)
   Upstream::ResourceManager& resource_manager =
       cluster_->info()->resourceManager(Upstream::ResourcePriority::Default);
-
-  // get the cx_open stat (this represents the circuit breaker state: closed is 0, open is 1)
-  Stats::StatNameManagedStorage cx_open_stat("circuit_breakers.default.cx_open",
-                                             cluster_->info()->statsScope().symbolTable());
-  Stats::Gauge& cx_open = cluster_->info()->statsScope().gaugeFromStatName(
-      cx_open_stat.statName(), Stats::Gauge::ImportMode::Accumulate);
-
-  // NOTE: in order to use remaining_cx (and for it to not always be 0)
-  // we need to use "track_remaining: true" in the config to get the remaining_cx stat
-  // (this represents the number of remaining connections)
-  Stats::StatNameManagedStorage remaining_cx_stat("circuit_breakers.default.remaining_cx",
-                                                  cluster_->info()->statsScope().symbolTable());
-  Stats::Gauge& remaining_cx = cluster_->info()->statsScope().gaugeFromStatName(
-      remaining_cx_stat.statName(), Stats::Gauge::ImportMode::Accumulate);
+  
+  // get the circuit breaker stats we are interested in, to assert against
+  Stats::Gauge& cx_open = getCircuitBreakersStatByPriority("default", "cx_open");
+  Stats::Gauge& remaining_cx = getCircuitBreakersStatByPriority("default", "remaining_cx");
 
   // check the yaml config is set correctly
   // we should have a maximum of 1 connection available to use
