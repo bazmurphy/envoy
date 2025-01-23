@@ -122,6 +122,9 @@ public:
     ON_CALL(secondary_, prioritySet()).WillByDefault(ReturnRef(secondary_ps_));
 
     setupPrioritySet();
+    
+    EXPECT_CALL(*primary_info_, resourceManager(Upstream::ResourcePriority::Default)).Times(0);
+    EXPECT_CALL(*secondary_info_, resourceManager(Upstream::ResourcePriority::Default)).Times(0);
 
     ON_CALL(primary_, loadBalancer()).WillByDefault(ReturnRef(primary_load_balancer_));
     ON_CALL(secondary_, loadBalancer()).WillByDefault(ReturnRef(secondary_load_balancer_));
@@ -200,8 +203,9 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxConnectionsTest) {
   Stats::Gauge& cx_open = cluster_->info()->statsScope().gaugeFromStatName(
       cx_open_stat.statName(), Stats::Gauge::ImportMode::Accumulate);
 
-  // NOTE: in order to use remaining_cx (and for it to not always be 0) we need to use "track_remaining: true" in the config
-  // get the remaining_cx stat (this represents the number of remaining connections)
+  // NOTE: in order to use remaining_cx (and for it to not always be 0) we need to use
+  // "track_remaining: true" in the config get the remaining_cx stat (this represents the number of
+  // remaining connections)
   Stats::StatNameManagedStorage remaining_cx_stat("circuit_breakers.default.remaining_cx",
                                                   cluster_->info()->statsScope().symbolTable());
   Stats::Gauge& remaining_cx = cluster_->info()->statsScope().gaugeFromStatName(
