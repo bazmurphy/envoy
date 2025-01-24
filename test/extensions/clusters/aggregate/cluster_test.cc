@@ -206,7 +206,7 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxConnectionsTest) {
   // resource manager for the DEFAULT priority (look above^)
   Upstream::ResourceManager& resource_manager =
       cluster_->info()->resourceManager(Upstream::ResourcePriority::Default);
-  
+
   // get the circuit breaker stats we are interested in, to assert against
   Stats::Gauge& cx_open = getCircuitBreakersStatByPriority("default", "cx_open");
   Stats::Gauge& remaining_cx = getCircuitBreakersStatByPriority("default", "remaining_cx");
