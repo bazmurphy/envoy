@@ -182,6 +182,73 @@ public:
 )EOF";
 }; // namespace Aggregate
 
+TEST_F(AggregateClusterTest, CircuitBreakerMaxConnectionsTest) {
+  const std::string yaml_config = R"EOF(
+    name: aggregate_cluster
+    connect_timeout: 0.25s
+    lb_policy: CLUSTER_PROVIDED
+    circuit_breakers:
+      thresholds:
+      - priority: DEFAULT
+        max_connections: 1
+        track_remaining: true
+    cluster_type:
+      name: envoy.clusters.aggregate
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.clusters.aggregate.v3.ClusterConfig
+        clusters:
+        - primary
+        - secondary
+)EOF";
+
+  initialize(yaml_config);
+
+  // resource manager for the DEFAULT priority (look above^)
+  Upstream::ResourceManager& resource_manager =
+      cluster_->info()->resourceManager(Upstream::ResourcePriority::Default);
+
+  // get the circuit breaker stats we are interested in, to assert against
+  Stats::Gauge& cx_open = getCircuitBreakersStatByPriority("default", "cx_open");
+  Stats::Gauge& remaining_cx = getCircuitBreakersStatByPriority("default", "remaining_cx");
+
+  // check the yaml config is set correctly
+  // we should have a maximum of 1 connection available to use
+  EXPECT_EQ(1U, resource_manager.connections().max());
+
+  // check that we can create a new connection
+  EXPECT_TRUE(resource_manager.connections().canCreate());
+  // check the connection count is 0
+  EXPECT_EQ(0U, resource_manager.connections().count());
+  // check that we have 1 remaining connection
+  EXPECT_EQ(1U, remaining_cx.value());
+  // check the circuit breaker is closed
+  EXPECT_EQ(0U, cx_open.value());
+
+  // create that one connection
+  resource_manager.connections().inc();
+
+  // check the connection count is now 1
+  EXPECT_EQ(1U, resource_manager.connections().count());
+  // make sure we are NOT allowed to create anymore connections
+  EXPECT_FALSE(resource_manager.connections().canCreate());
+  // check that we have 0 remaining connections
+  EXPECT_EQ(0U, remaining_cx.value());
+  // check the circuit breaker is now open
+  EXPECT_EQ(1U, cx_open.value());
+
+  // remove that one connection
+  resource_manager.connections().dec();
+
+  // check the connection count is now 0 again
+  EXPECT_EQ(0U, resource_manager.connections().count());
+  // check that we can create a new connection again
+  EXPECT_TRUE(resource_manager.connections().canCreate());
+  // check that we have 1 remaining connection again
+  EXPECT_EQ(1U, remaining_cx.value());
+  // check that the circuit breaker is closed again
+  EXPECT_EQ(0U, cx_open.value());
+}
+
 TEST_F(AggregateClusterTest, CircuitBreakerMaxRequestsTest) {
   const std::string yaml_config = R"EOF(
     name: aggregate_cluster
@@ -207,7 +274,6 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxRequestsTest) {
   Upstream::ResourceManager& resource_manager =
       cluster_->info()->resourceManager(Upstream::ResourcePriority::Default);
 
-  // get the circuit breaker stats we are interested in, to assert against
   Stats::Gauge& rq_open = getCircuitBreakersStatByPriority("default", "rq_open");
   Stats::Gauge& remaining_rq = getCircuitBreakersStatByPriority("default", "remaining_rq");
 
