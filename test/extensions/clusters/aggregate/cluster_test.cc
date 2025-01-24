@@ -279,14 +279,14 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxPendingRequestsTest) {
   Stats::Gauge& remaining_pending = getCircuitBreakersStatByPriority("default", "remaining_pending");
 
   // check the yaml config is set correctly
-  // we should have a maximum of 1 pending requests
+  // we should have a maximum of 1 pending request
   EXPECT_EQ(1U, resource_manager.pendingRequests().max());
 
-  // check that we can create a new pending requests
+  // check that we can create a new pending request
   EXPECT_TRUE(resource_manager.pendingRequests().canCreate());
   // check the pending requests count is 0
   EXPECT_EQ(0U, resource_manager.pendingRequests().count());
-  // check that we have 1 remaining pending requests
+  // check that we have 1 remaining pending request
   EXPECT_EQ(1U, remaining_pending.value());
   // check the circuit breaker is closed
   EXPECT_EQ(0U, rq_pending_open.value());
@@ -296,9 +296,9 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxPendingRequestsTest) {
 
   // check the pending requests count is now 1
   EXPECT_EQ(1U, resource_manager.pendingRequests().count());
-  // make sure we are NOT allowed to create anymore pendingRequests
+  // make sure we are NOT allowed to create anymore pending requests
   EXPECT_FALSE(resource_manager.pendingRequests().canCreate());
-  // check that we have 0 remaining pendingRequests
+  // check that we have 0 remaining pending requests
   EXPECT_EQ(0U, remaining_pending.value());
   // check the circuit breaker is now open
   EXPECT_EQ(1U, rq_pending_open.value());
@@ -308,9 +308,9 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxPendingRequestsTest) {
 
   // check the pending requests count is now 0 again
   EXPECT_EQ(0U, resource_manager.pendingRequests().count());
-  // check that we can create a new pending requests again
+  // check that we can create a new pending request again
   EXPECT_TRUE(resource_manager.pendingRequests().canCreate());
-  // check that we have 1 remaining pending requests again
+  // check that we have 1 remaining pending request again
   EXPECT_EQ(1U, remaining_pending.value());
   // check that the circuit breaker is closed again
   EXPECT_EQ(0U, rq_pending_open.value());
