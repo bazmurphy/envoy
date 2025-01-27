@@ -196,7 +196,6 @@ public:
 TEST_F(AggregateClusterTest, CircuitBreakerDefaultsTest) {
   initialize(default_yaml_config_);
 
-  // resource manager for the DEFAULT priority
   Upstream::ResourceManager& resource_manager =
       cluster_->info()->resourceManager(Upstream::ResourcePriority::Default);
 
@@ -256,15 +255,15 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxConnectionsTest) {
 
   initialize(yaml_config);
 
-  // resource manager for the DEFAULT priority (look above^)
+  // resource manager for the DEFAULT priority (see the yaml config above)
   Upstream::ResourceManager& resource_manager =
       cluster_->info()->resourceManager(Upstream::ResourcePriority::Default);
 
-  // get the circuit breaker stats we are interested in, to assert against
+  // get the circuit breaker statistics we are interested in, to assert against
   Stats::Gauge& cx_open = getCircuitBreakersStatByPriority("default", "cx_open");
   Stats::Gauge& remaining_cx = getCircuitBreakersStatByPriority("default", "remaining_cx");
 
-  // check the yaml config is set correctly
+  // check the yaml config is set correctly,
   // we should have a maximum of 1 connection available to use
   EXPECT_EQ(1U, resource_manager.connections().max());
 
@@ -305,29 +304,23 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxPendingRequestsTest) {
 
   initialize(yaml_config);
 
-  // resource manager for the DEFAULT priority (look above^)
   Upstream::ResourceManager& resource_manager =
       cluster_->info()->resourceManager(Upstream::ResourcePriority::Default);
 
-  // get the circuit breaker stats we are interested in, to assert against
   Stats::Gauge& rq_pending_open = getCircuitBreakersStatByPriority("default", "rq_pending_open");
   Stats::Gauge& remaining_pending =
       getCircuitBreakersStatByPriority("default", "remaining_pending");
 
-  // check the yaml config is set correctly
-  // we should have a maximum of 1 pending request
   EXPECT_EQ(1U, resource_manager.pendingRequests().max());
 
   assertResourceManagerStat(resource_manager.pendingRequests(), remaining_pending, rq_pending_open,
                             true, 0U, 1U, 0U);
 
-  // create that one pending request
   resource_manager.pendingRequests().inc();
 
   assertResourceManagerStat(resource_manager.pendingRequests(), remaining_pending, rq_pending_open,
                             false, 1U, 0U, 1U);
 
-  // remove that one pending request
   resource_manager.pendingRequests().dec();
 
   assertResourceManagerStat(resource_manager.pendingRequests(), remaining_pending, rq_pending_open,
@@ -355,25 +348,20 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxRequestsTest) {
 
   initialize(yaml_config);
 
-  // resource manager for the DEFAULT priority (look above^)
   Upstream::ResourceManager& resource_manager =
       cluster_->info()->resourceManager(Upstream::ResourcePriority::Default);
 
   Stats::Gauge& rq_open = getCircuitBreakersStatByPriority("default", "rq_open");
   Stats::Gauge& remaining_rq = getCircuitBreakersStatByPriority("default", "remaining_rq");
 
-  // check the yaml config is set correctly
-  // we should have a maximum of 1 request available to use
   EXPECT_EQ(1U, resource_manager.requests().max());
 
   assertResourceManagerStat(resource_manager.requests(), remaining_rq, rq_open, true, 0U, 1U, 0U);
 
-  // create that one request
   resource_manager.requests().inc();
 
   assertResourceManagerStat(resource_manager.requests(), remaining_rq, rq_open, false, 1U, 0U, 1U);
 
-  // remove that one request
   resource_manager.requests().dec();
 
   assertResourceManagerStat(resource_manager.requests(), remaining_rq, rq_open, true, 0U, 1U, 0U);
@@ -400,7 +388,6 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxRetriesTest) {
 
   initialize(yaml_config);
 
-  // resource manager for the DEFAULT priority (look above^)
   Upstream::ResourceManager& resource_manager =
       cluster_->info()->resourceManager(Upstream::ResourcePriority::Default);
 
@@ -408,8 +395,6 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxRetriesTest) {
   Stats::Gauge& remaining_retries =
       getCircuitBreakersStatByPriority("default", "remaining_retries");
 
-  // check the yaml config is set correctly
-  // we should have a maximum of 1 retry available to use
   EXPECT_EQ(1U, resource_manager.retries().max());
 
   assertResourceManagerStat(resource_manager.retries(), remaining_retries, rq_retry_open, true, 0U,
@@ -420,7 +405,6 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxRetriesTest) {
   assertResourceManagerStat(resource_manager.retries(), remaining_retries, rq_retry_open, false, 1U,
                             0U, 1U);
 
-  // remove that one retry
   resource_manager.retries().dec();
 
   assertResourceManagerStat(resource_manager.retries(), remaining_retries, rq_retry_open, true, 0U,
@@ -448,7 +432,6 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxConnectionPoolsTest) {
 
   initialize(yaml_config);
 
-  // resource manager for the DEFAULT priority (look above^)
   Upstream::ResourceManager& resource_manager =
       cluster_->info()->resourceManager(Upstream::ResourcePriority::Default);
 
@@ -456,20 +439,16 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxConnectionPoolsTest) {
   Stats::Gauge& remaining_cx_pools =
       getCircuitBreakersStatByPriority("default", "remaining_cx_pools");
 
-  // check the yaml config is set correctly
-  // we should have a maximum of 1 request available to use
   EXPECT_EQ(1U, resource_manager.connectionPools().max());
 
   assertResourceManagerStat(resource_manager.connectionPools(), remaining_cx_pools, cx_pool_open,
                             true, 0U, 1U, 0U);
 
-  // create that one request
   resource_manager.connectionPools().inc();
 
   assertResourceManagerStat(resource_manager.connectionPools(), remaining_cx_pools, cx_pool_open,
                             false, 1U, 0U, 1U);
 
-  // remove that one request
   resource_manager.connectionPools().dec();
 
   assertResourceManagerStat(resource_manager.connectionPools(), remaining_cx_pools, cx_pool_open,
