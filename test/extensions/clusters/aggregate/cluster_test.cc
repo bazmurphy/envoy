@@ -428,7 +428,7 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxRetriesTest) {
 
   // check the retries count is now 1
   EXPECT_EQ(1U, resource_manager.retries().count());
-  // make sure we are NOT allowed to create anymore retry
+  // make sure we are NOT allowed to create anymore retries
   EXPECT_FALSE(resource_manager.retries().canCreate());
   // check that we have 0 remaining retries
   EXPECT_EQ(0U, remaining_retries.value());
@@ -438,7 +438,7 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxRetriesTest) {
   // remove that one retry
   resource_manager.retries().dec();
 
-  // check the request count is now 0 again
+  // check the retries count is now 0 again
   EXPECT_EQ(0U, resource_manager.retries().count());
   // check that we can create a new retry again
   EXPECT_TRUE(resource_manager.retries().canCreate());
