@@ -189,8 +189,11 @@ TEST_F(AggregateClusterTest, CircuitBreakerDefaultsTest) {
   Upstream::ResourceManager& resource_manager =
       cluster_->info()->resourceManager(Upstream::ResourcePriority::Default);
 
-  // take each of the: max_connections, max_pending_requests, max_requests, max_retries to their default limit
-  // then check that the circuit breaker prevents us from creating any more
+  // the default circuit breaker values are:
+  // max_connections : 1024
+  // max_pending_requests : 1024
+  // max_requests : 1024
+  // max_retries : 3
 
   EXPECT_EQ(1024U, resource_manager.connections().max());
   for (int i = 0; i < 1024; ++i) {
