@@ -185,7 +185,6 @@ public:
 TEST_F(AggregateClusterTest, CircuitBreakerDefaultsTest) {
   initialize(default_yaml_config_);
 
-  // resource manager for the DEFAULT priority
   Upstream::ResourceManager& resource_manager =
       cluster_->info()->resourceManager(Upstream::ResourcePriority::Default);
 
@@ -245,15 +244,15 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxConnectionsTest) {
 
   initialize(yaml_config);
 
-  // resource manager for the DEFAULT priority (look above^)
+  // resource manager for the DEFAULT priority (see the yaml config above)
   Upstream::ResourceManager& resource_manager =
       cluster_->info()->resourceManager(Upstream::ResourcePriority::Default);
 
-  // get the circuit breaker stats we are interested in, to assert against
+  // get the circuit breaker statistics we are interested in, to assert against
   Stats::Gauge& cx_open = getCircuitBreakersStatByPriority("default", "cx_open");
   Stats::Gauge& remaining_cx = getCircuitBreakersStatByPriority("default", "remaining_cx");
 
-  // check the yaml config is set correctly
+  // check the yaml config is set correctly,
   // we should have a maximum of 1 connection available to use
   EXPECT_EQ(1U, resource_manager.connections().max());
 
@@ -312,50 +311,32 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxPendingRequestsTest) {
 
   initialize(yaml_config);
 
-  // resource manager for the DEFAULT priority (look above^)
   Upstream::ResourceManager& resource_manager =
       cluster_->info()->resourceManager(Upstream::ResourcePriority::Default);
 
-  // get the circuit breaker stats we are interested in, to assert against
   Stats::Gauge& rq_pending_open = getCircuitBreakersStatByPriority("default", "rq_pending_open");
   Stats::Gauge& remaining_pending =
       getCircuitBreakersStatByPriority("default", "remaining_pending");
 
-  // check the yaml config is set correctly
-  // we should have a maximum of 1 pending request
   EXPECT_EQ(1U, resource_manager.pendingRequests().max());
 
-  // check that we can create a new pending request
   EXPECT_TRUE(resource_manager.pendingRequests().canCreate());
-  // check the pending requests count is 0
   EXPECT_EQ(0U, resource_manager.pendingRequests().count());
-  // check that we have 1 remaining pending request
   EXPECT_EQ(1U, remaining_pending.value());
-  // check the circuit breaker is closed
   EXPECT_EQ(0U, rq_pending_open.value());
 
-  // create that one pending request
   resource_manager.pendingRequests().inc();
 
-  // check the pending requests count is now 1
   EXPECT_EQ(1U, resource_manager.pendingRequests().count());
-  // make sure we are NOT allowed to create anymore pending requests
   EXPECT_FALSE(resource_manager.pendingRequests().canCreate());
-  // check that we have 0 remaining pending requests
   EXPECT_EQ(0U, remaining_pending.value());
-  // check the circuit breaker is now open
   EXPECT_EQ(1U, rq_pending_open.value());
 
-  // remove that one pending request
   resource_manager.pendingRequests().dec();
 
-  // check the pending requests count is now 0 again
   EXPECT_EQ(0U, resource_manager.pendingRequests().count());
-  // check that we can create a new pending request again
   EXPECT_TRUE(resource_manager.pendingRequests().canCreate());
-  // check that we have 1 remaining pending request again
   EXPECT_EQ(1U, remaining_pending.value());
-  // check that the circuit breaker is closed again
   EXPECT_EQ(0U, rq_pending_open.value());
 }
 
@@ -380,48 +361,31 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxRequestsTest) {
 
   initialize(yaml_config);
 
-  // resource manager for the DEFAULT priority (look above^)
   Upstream::ResourceManager& resource_manager =
       cluster_->info()->resourceManager(Upstream::ResourcePriority::Default);
 
   Stats::Gauge& rq_open = getCircuitBreakersStatByPriority("default", "rq_open");
   Stats::Gauge& remaining_rq = getCircuitBreakersStatByPriority("default", "remaining_rq");
 
-  // check the yaml config is set correctly
-  // we should have a maximum of 1 request available to use
   EXPECT_EQ(1U, resource_manager.requests().max());
 
-  // check that we can create a new request
   EXPECT_TRUE(resource_manager.requests().canCreate());
-  // check the requests count is 0
   EXPECT_EQ(0U, resource_manager.requests().count());
-  // check that we have 1 remaining request
   EXPECT_EQ(1U, remaining_rq.value());
-  // check the circuit breaker is closed
   EXPECT_EQ(0U, rq_open.value());
 
-  // create that one request
   resource_manager.requests().inc();
 
-  // check the request count is now 1
   EXPECT_EQ(1U, resource_manager.requests().count());
-  // make sure we are NOT allowed to create anymore request
   EXPECT_FALSE(resource_manager.requests().canCreate());
-  // check that we have 0 remaining requests
   EXPECT_EQ(0U, remaining_rq.value());
-  // check the circuit breaker is now open
   EXPECT_EQ(1U, rq_open.value());
 
-  // remove that one request
   resource_manager.requests().dec();
 
-  // check the request count is now 0 again
   EXPECT_EQ(0U, resource_manager.requests().count());
-  // check that we can create a new request again
   EXPECT_TRUE(resource_manager.requests().canCreate());
-  // check that we have 1 remaining request again
   EXPECT_EQ(1U, remaining_rq.value());
-  // check that the circuit breaker is closed again
   EXPECT_EQ(0U, rq_open.value());
 }
 
@@ -446,7 +410,6 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxRetriesTest) {
 
   initialize(yaml_config);
 
-  // resource manager for the DEFAULT priority (look above^)
   Upstream::ResourceManager& resource_manager =
       cluster_->info()->resourceManager(Upstream::ResourcePriority::Default);
 
@@ -454,39 +417,25 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxRetriesTest) {
   Stats::Gauge& remaining_retries =
       getCircuitBreakersStatByPriority("default", "remaining_retries");
 
-  // check the yaml config is set correctly
-  // we should have a maximum of 1 retry available to use
   EXPECT_EQ(1U, resource_manager.retries().max());
-  // check that we can retry
+
   EXPECT_TRUE(resource_manager.retries().canCreate());
-  // check the retries count is 0
   EXPECT_EQ(0U, resource_manager.retries().count());
-  // check that we have 1 remaining retry
   EXPECT_EQ(1U, remaining_retries.value());
-  // check the circuit breaker is closed
   EXPECT_EQ(0U, rq_retry_open.value());
 
   resource_manager.retries().inc();
 
-  // check the retries count is now 1
   EXPECT_EQ(1U, resource_manager.retries().count());
-  // make sure we are NOT allowed to create anymore retries
   EXPECT_FALSE(resource_manager.retries().canCreate());
-  // check that we have 0 remaining retries
   EXPECT_EQ(0U, remaining_retries.value());
-  // check the circuit breaker is now open
   EXPECT_EQ(1U, rq_retry_open.value());
 
-  // remove that one retry
   resource_manager.retries().dec();
 
-  // check the retries count is now 0 again
   EXPECT_EQ(0U, resource_manager.retries().count());
-  // check that we can create a new retry again
   EXPECT_TRUE(resource_manager.retries().canCreate());
-  // check that we have 1 remaining retry again
   EXPECT_EQ(1U, remaining_retries.value());
-  // check that the circuit breaker is closed again
   EXPECT_EQ(0U, rq_retry_open.value());
 }
 
@@ -511,7 +460,6 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxConnectionPoolsTest) {
 
   initialize(yaml_config);
 
-  // resource manager for the DEFAULT priority (look above^)
   Upstream::ResourceManager& resource_manager =
       cluster_->info()->resourceManager(Upstream::ResourcePriority::Default);
 
@@ -519,41 +467,25 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxConnectionPoolsTest) {
   Stats::Gauge& remaining_cx_pools =
       getCircuitBreakersStatByPriority("default", "remaining_cx_pools");
 
-  // check the yaml config is set correctly
-  // we should have a maximum of 1 request available to use
   EXPECT_EQ(1U, resource_manager.connectionPools().max());
 
-  // check that we can create a new connection pool
   EXPECT_TRUE(resource_manager.connectionPools().canCreate());
-  // check the connection pool count is 0
   EXPECT_EQ(0U, resource_manager.connectionPools().count());
-  // check that we have 1 remaining connection pool
   EXPECT_EQ(1U, remaining_cx_pools.value());
-  // check the circuit breaker is closed
   EXPECT_EQ(0U, cx_pool_open.value());
 
-  // create that one request
   resource_manager.connectionPools().inc();
 
-  // check the connection pool count is now 1
   EXPECT_EQ(1U, resource_manager.connectionPools().count());
-  // make sure we are NOT allowed to create anymore connection pools
   EXPECT_FALSE(resource_manager.connectionPools().canCreate());
-  // check that we have 0 remaining connection pools
   EXPECT_EQ(0U, remaining_cx_pools.value());
-  // check the circuit breaker is now open
   EXPECT_EQ(1U, cx_pool_open.value());
 
-  // remove that one request
   resource_manager.connectionPools().dec();
 
-  // check the connection pool count is now 0 again
   EXPECT_EQ(0U, resource_manager.connectionPools().count());
-  // check that we can create a new connection pool again
   EXPECT_TRUE(resource_manager.connectionPools().canCreate());
-  // check that we have 1 remaining connection pool again
   EXPECT_EQ(1U, remaining_cx_pools.value());
-  // check that the circuit breaker is closed again
   EXPECT_EQ(0U, cx_pool_open.value());
 }
 
