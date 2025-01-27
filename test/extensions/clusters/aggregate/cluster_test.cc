@@ -148,7 +148,6 @@ public:
                                  Stats::Gauge& open, bool expected_can_create,
                                  unsigned int expected_count, unsigned int expected_remaining,
                                  unsigned int expected_open) {
-
     EXPECT_EQ(expected_can_create, resource.canCreate());
     EXPECT_EQ(expected_count, resource.count());
     EXPECT_EQ(expected_remaining, remaining.value());
@@ -267,6 +266,8 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxConnectionsTest) {
   // we should have a maximum of 1 connection available to use
   EXPECT_EQ(1U, resource_manager.connections().max());
 
+  // test the specific stat's remaining value and it's related circuit breaker's state
+  // eg. max_connections, the remaining connections and the connections circuit breaker state
   assertResourceManagerStat(resource_manager.connections(), remaining_cx, cx_open, true, 0U, 1U,
                             0U);
 
