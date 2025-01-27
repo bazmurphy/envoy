@@ -267,7 +267,7 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxConnectionsTest) {
   EXPECT_EQ(1U, resource_manager.connections().max());
 
   // test the specific stat's remaining value and it's related circuit breaker's state
-  // eg. max_connections, the remaining connections and the connections circuit breaker state
+  // eg. max_connections, the remaining connections, and the connections circuit breaker state
   assertResourceManagerStat(resource_manager.connections(), remaining_cx, cx_open, true, 0U, 1U,
                             0U);
 
