@@ -391,7 +391,7 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxRetriesTest) {
     circuit_breakers:
       thresholds:
       - priority: DEFAULT
-        max_retries: 3
+        max_retries: 1
         track_remaining: true
     cluster_type:
       name: envoy.clusters.aggregate
@@ -413,25 +413,21 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxRetriesTest) {
       getCircuitBreakersStatByPriority("default", "remaining_retries");
 
   // check the yaml config is set correctly
-  // we should have a maximum of 3 retries available to use
-  EXPECT_EQ(3U, resource_manager.retries().max());
-
+  // we should have a maximum of 1 retry available to use
+  EXPECT_EQ(1U, resource_manager.retries().max());
   // check that we can retry
   EXPECT_TRUE(resource_manager.retries().canCreate());
   // check the retries count is 0
   EXPECT_EQ(0U, resource_manager.retries().count());
-  // check that we have 3 remaining retries
-  EXPECT_EQ(3U, remaining_retries.value());
+  // check that we have 1 remaining retry
+  EXPECT_EQ(1U, remaining_retries.value());
   // check the circuit breaker is closed
   EXPECT_EQ(0U, rq_retry_open.value());
 
-  // increment the retries count by 3
-  for (int i = 0; i < 3; ++i) {
-    resource_manager.retries().inc();
-  }
+  resource_manager.retries().inc();
 
-  // check the retries count is now 3
-  EXPECT_EQ(3U, resource_manager.retries().count());
+  // check the retries count is now 1
+  EXPECT_EQ(1U, resource_manager.retries().count());
   // make sure we are NOT allowed to create anymore retry
   EXPECT_FALSE(resource_manager.retries().canCreate());
   // check that we have 0 remaining retries
@@ -442,11 +438,11 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxRetriesTest) {
   // remove that one retry
   resource_manager.retries().dec();
 
-  // check the request count is now 2
-  EXPECT_EQ(2U, resource_manager.retries().count());
+  // check the request count is now 0 again
+  EXPECT_EQ(0U, resource_manager.retries().count());
   // check that we can create a new retry again
   EXPECT_TRUE(resource_manager.retries().canCreate());
-  // check that we have 2 remaining retries again
+  // check that we have 1 remaining retry again
   EXPECT_EQ(1U, remaining_retries.value());
   // check that the circuit breaker is closed again
   EXPECT_EQ(0U, rq_retry_open.value());
