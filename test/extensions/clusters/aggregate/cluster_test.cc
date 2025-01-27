@@ -144,6 +144,16 @@ public:
                                                             Stats::Gauge::ImportMode::Accumulate);
   }
 
+  void assertResourceManagerStat(ResourceLimit& resource, Stats::Gauge& remaining,
+                                 Stats::Gauge& open, bool expected_can_create,
+                                 unsigned int expected_count, unsigned int expected_remaining,
+                                 unsigned int expected_open) {
+    EXPECT_EQ(expected_can_create, resource.canCreate());
+    EXPECT_EQ(expected_count, resource.count());
+    EXPECT_EQ(expected_remaining, remaining.value());
+    EXPECT_EQ(expected_open, open.value());
+  }
+
   NiceMock<Server::Configuration::MockServerFactoryContext> server_context_;
   Ssl::MockContextManager ssl_context_manager_;
 
@@ -256,38 +266,22 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxConnectionsTest) {
   // we should have a maximum of 1 connection available to use
   EXPECT_EQ(1U, resource_manager.connections().max());
 
-  // check that we can create a new connection
-  EXPECT_TRUE(resource_manager.connections().canCreate());
-  // check the connection count is 0
-  EXPECT_EQ(0U, resource_manager.connections().count());
-  // check that we have 1 remaining connection
-  EXPECT_EQ(1U, remaining_cx.value());
-  // check the circuit breaker is closed
-  EXPECT_EQ(0U, cx_open.value());
+  // test the specific stat's remaining value and it's related circuit breaker's state
+  // eg. max_connections, the remaining connections, and the connections circuit breaker state
+  assertResourceManagerStat(resource_manager.connections(), remaining_cx, cx_open, true, 0U, 1U,
+                            0U);
 
   // create that one connection
   resource_manager.connections().inc();
 
-  // check the connection count is now 1
-  EXPECT_EQ(1U, resource_manager.connections().count());
-  // make sure we are NOT allowed to create anymore connections
-  EXPECT_FALSE(resource_manager.connections().canCreate());
-  // check that we have 0 remaining connections
-  EXPECT_EQ(0U, remaining_cx.value());
-  // check the circuit breaker is now open
-  EXPECT_EQ(1U, cx_open.value());
+  assertResourceManagerStat(resource_manager.connections(), remaining_cx, cx_open, false, 1U, 0U,
+                            1U);
 
   // remove that one connection
   resource_manager.connections().dec();
 
-  // check the connection count is now 0 again
-  EXPECT_EQ(0U, resource_manager.connections().count());
-  // check that we can create a new connection again
-  EXPECT_TRUE(resource_manager.connections().canCreate());
-  // check that we have 1 remaining connection again
-  EXPECT_EQ(1U, remaining_cx.value());
-  // check that the circuit breaker is closed again
-  EXPECT_EQ(0U, cx_open.value());
+  assertResourceManagerStat(resource_manager.connections(), remaining_cx, cx_open, true, 0U, 1U,
+                            0U);
 }
 
 TEST_F(AggregateClusterTest, CircuitBreakerMaxPendingRequestsTest) {
@@ -320,24 +314,18 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxPendingRequestsTest) {
 
   EXPECT_EQ(1U, resource_manager.pendingRequests().max());
 
-  EXPECT_TRUE(resource_manager.pendingRequests().canCreate());
-  EXPECT_EQ(0U, resource_manager.pendingRequests().count());
-  EXPECT_EQ(1U, remaining_pending.value());
-  EXPECT_EQ(0U, rq_pending_open.value());
+  assertResourceManagerStat(resource_manager.pendingRequests(), remaining_pending, rq_pending_open,
+                            true, 0U, 1U, 0U);
 
   resource_manager.pendingRequests().inc();
 
-  EXPECT_EQ(1U, resource_manager.pendingRequests().count());
-  EXPECT_FALSE(resource_manager.pendingRequests().canCreate());
-  EXPECT_EQ(0U, remaining_pending.value());
-  EXPECT_EQ(1U, rq_pending_open.value());
+  assertResourceManagerStat(resource_manager.pendingRequests(), remaining_pending, rq_pending_open,
+                            false, 1U, 0U, 1U);
 
   resource_manager.pendingRequests().dec();
 
-  EXPECT_EQ(0U, resource_manager.pendingRequests().count());
-  EXPECT_TRUE(resource_manager.pendingRequests().canCreate());
-  EXPECT_EQ(1U, remaining_pending.value());
-  EXPECT_EQ(0U, rq_pending_open.value());
+  assertResourceManagerStat(resource_manager.pendingRequests(), remaining_pending, rq_pending_open,
+                            true, 0U, 1U, 0U);
 }
 
 TEST_F(AggregateClusterTest, CircuitBreakerMaxRequestsTest) {
@@ -369,24 +357,15 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxRequestsTest) {
 
   EXPECT_EQ(1U, resource_manager.requests().max());
 
-  EXPECT_TRUE(resource_manager.requests().canCreate());
-  EXPECT_EQ(0U, resource_manager.requests().count());
-  EXPECT_EQ(1U, remaining_rq.value());
-  EXPECT_EQ(0U, rq_open.value());
+  assertResourceManagerStat(resource_manager.requests(), remaining_rq, rq_open, true, 0U, 1U, 0U);
 
   resource_manager.requests().inc();
 
-  EXPECT_EQ(1U, resource_manager.requests().count());
-  EXPECT_FALSE(resource_manager.requests().canCreate());
-  EXPECT_EQ(0U, remaining_rq.value());
-  EXPECT_EQ(1U, rq_open.value());
+  assertResourceManagerStat(resource_manager.requests(), remaining_rq, rq_open, false, 1U, 0U, 1U);
 
   resource_manager.requests().dec();
 
-  EXPECT_EQ(0U, resource_manager.requests().count());
-  EXPECT_TRUE(resource_manager.requests().canCreate());
-  EXPECT_EQ(1U, remaining_rq.value());
-  EXPECT_EQ(0U, rq_open.value());
+  assertResourceManagerStat(resource_manager.requests(), remaining_rq, rq_open, true, 0U, 1U, 0U);
 }
 
 TEST_F(AggregateClusterTest, CircuitBreakerMaxRetriesTest) {
@@ -419,24 +398,18 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxRetriesTest) {
 
   EXPECT_EQ(1U, resource_manager.retries().max());
 
-  EXPECT_TRUE(resource_manager.retries().canCreate());
-  EXPECT_EQ(0U, resource_manager.retries().count());
-  EXPECT_EQ(1U, remaining_retries.value());
-  EXPECT_EQ(0U, rq_retry_open.value());
+  assertResourceManagerStat(resource_manager.retries(), remaining_retries, rq_retry_open, true, 0U,
+                            1U, 0U);
 
   resource_manager.retries().inc();
 
-  EXPECT_EQ(1U, resource_manager.retries().count());
-  EXPECT_FALSE(resource_manager.retries().canCreate());
-  EXPECT_EQ(0U, remaining_retries.value());
-  EXPECT_EQ(1U, rq_retry_open.value());
+  assertResourceManagerStat(resource_manager.retries(), remaining_retries, rq_retry_open, false, 1U,
+                            0U, 1U);
 
   resource_manager.retries().dec();
 
-  EXPECT_EQ(0U, resource_manager.retries().count());
-  EXPECT_TRUE(resource_manager.retries().canCreate());
-  EXPECT_EQ(1U, remaining_retries.value());
-  EXPECT_EQ(0U, rq_retry_open.value());
+  assertResourceManagerStat(resource_manager.retries(), remaining_retries, rq_retry_open, true, 0U,
+                            1U, 0U);
 }
 
 TEST_F(AggregateClusterTest, CircuitBreakerMaxConnectionPoolsTest) {
@@ -469,24 +442,18 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxConnectionPoolsTest) {
 
   EXPECT_EQ(1U, resource_manager.connectionPools().max());
 
-  EXPECT_TRUE(resource_manager.connectionPools().canCreate());
-  EXPECT_EQ(0U, resource_manager.connectionPools().count());
-  EXPECT_EQ(1U, remaining_cx_pools.value());
-  EXPECT_EQ(0U, cx_pool_open.value());
+  assertResourceManagerStat(resource_manager.connectionPools(), remaining_cx_pools, cx_pool_open,
+                            true, 0U, 1U, 0U);
 
   resource_manager.connectionPools().inc();
 
-  EXPECT_EQ(1U, resource_manager.connectionPools().count());
-  EXPECT_FALSE(resource_manager.connectionPools().canCreate());
-  EXPECT_EQ(0U, remaining_cx_pools.value());
-  EXPECT_EQ(1U, cx_pool_open.value());
+  assertResourceManagerStat(resource_manager.connectionPools(), remaining_cx_pools, cx_pool_open,
+                            false, 1U, 0U, 1U);
 
   resource_manager.connectionPools().dec();
 
-  EXPECT_EQ(0U, resource_manager.connectionPools().count());
-  EXPECT_TRUE(resource_manager.connectionPools().canCreate());
-  EXPECT_EQ(1U, remaining_cx_pools.value());
-  EXPECT_EQ(0U, cx_pool_open.value());
+  assertResourceManagerStat(resource_manager.connectionPools(), remaining_cx_pools, cx_pool_open,
+                            true, 0U, 1U, 0U);
 }
 
 TEST_F(AggregateClusterTest, LoadBalancerTest) {
