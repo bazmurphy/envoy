@@ -447,7 +447,49 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxRequestsTest) {
   assertResourceManagerStat(resource_manager.requests(), remaining_rq, rq_open, true, 0U, 1U, 0U);
 }
 
-TEST_F(AggregateClusterTest, CircuitBreakerMaxRetriesTest) {}
+TEST_F(AggregateClusterTest, CircuitBreakerMaxRetriesTest) {
+  const std::string yaml_config = R"EOF(
+    name: aggregate_cluster
+    connect_timeout: 0.25s
+    lb_policy: CLUSTER_PROVIDED
+    circuit_breakers:
+      thresholds:
+      - priority: DEFAULT
+        max_retries: 1
+        track_remaining: true
+    cluster_type:
+      name: envoy.clusters.aggregate
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.clusters.aggregate.v3.ClusterConfig
+        clusters:
+        - primary
+        - secondary
+)EOF";
+
+  initialize(yaml_config);
+
+  Upstream::ResourceManager& resource_manager =
+      cluster_->info()->resourceManager(Upstream::ResourcePriority::Default);
+
+  Stats::Gauge& rq_retry_open = getCircuitBreakersStatByPriority("default", "rq_retry_open");
+  Stats::Gauge& remaining_retries =
+      getCircuitBreakersStatByPriority("default", "remaining_retries");
+
+  EXPECT_EQ(1U, resource_manager.retries().max());
+
+  assertResourceManagerStat(resource_manager.retries(), remaining_retries, rq_retry_open, true, 0U,
+                            1U, 0U);
+
+  resource_manager.retries().inc();
+
+  assertResourceManagerStat(resource_manager.retries(), remaining_retries, rq_retry_open, false, 1U,
+                            0U, 1U);
+
+  resource_manager.retries().dec();
+
+  assertResourceManagerStat(resource_manager.retries(), remaining_retries, rq_retry_open, true, 0U,
+                            1U, 0U);
+}
 
 TEST_F(AggregateClusterTest, CircuitBreakerMaxConnectionPoolsTest) {}
 
