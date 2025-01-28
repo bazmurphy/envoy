@@ -491,7 +491,49 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxRetriesTest) {
                             1U, 0U);
 }
 
-TEST_F(AggregateClusterTest, CircuitBreakerMaxConnectionPoolsTest) {}
+TEST_F(AggregateClusterTest, CircuitBreakerMaxConnectionPoolsTest) {
+  const std::string yaml_config = R"EOF(
+    name: aggregate_cluster
+    connect_timeout: 0.25s
+    lb_policy: CLUSTER_PROVIDED
+    circuit_breakers:
+      thresholds:
+      - priority: DEFAULT
+        max_connection_pools: 1
+        track_remaining: true
+    cluster_type:
+      name: envoy.clusters.aggregate
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.clusters.aggregate.v3.ClusterConfig
+        clusters:
+        - primary
+        - secondary
+)EOF";
+
+  initialize(yaml_config);
+
+  Upstream::ResourceManager& resource_manager =
+      cluster_->info()->resourceManager(Upstream::ResourcePriority::Default);
+
+  Stats::Gauge& cx_pool_open = getCircuitBreakersStatByPriority("default", "cx_pool_open");
+  Stats::Gauge& remaining_cx_pools =
+      getCircuitBreakersStatByPriority("default", "remaining_cx_pools");
+
+  EXPECT_EQ(1U, resource_manager.connectionPools().max());
+
+  assertResourceManagerStat(resource_manager.connectionPools(), remaining_cx_pools, cx_pool_open,
+                            true, 0U, 1U, 0U);
+
+  resource_manager.connectionPools().inc();
+
+  assertResourceManagerStat(resource_manager.connectionPools(), remaining_cx_pools, cx_pool_open,
+                            false, 1U, 0U, 1U);
+
+  resource_manager.connectionPools().dec();
+
+  assertResourceManagerStat(resource_manager.connectionPools(), remaining_cx_pools, cx_pool_open,
+                            true, 0U, 1U, 0U);
+}
 
 TEST_F(AggregateClusterTest, LoadBalancerTest) {
   initialize(default_yaml_config_);
