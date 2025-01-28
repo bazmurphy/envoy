@@ -151,7 +151,7 @@ public:
     EXPECT_EQ(expected_remaining, remaining.value());
     EXPECT_EQ(expected_open, open.value());
   }
-  
+
   NiceMock<Server::Configuration::MockServerFactoryContext> server_context_;
   Ssl::MockContextManager ssl_context_manager_;
 
