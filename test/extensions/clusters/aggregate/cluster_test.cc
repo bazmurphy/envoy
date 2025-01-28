@@ -331,33 +331,59 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxConnectionsHighPriorityTest) {
   assertResourceManagerStat(resource_manager_high.connections(), remaining_cx_high, cx_open_high,
                             true, 0U, 2U, 0U);
 
-  // test DEFAULT priority
+  // increment connection for priority DEFAULT
   resource_manager_default.connections().inc();
+  // check the state of DEFAULT Circuit breaker
   assertResourceManagerStat(resource_manager_default.connections(), remaining_cx_default,
                             cx_open_default, false, 1U, 0U, 1U);
+  // check the state of HIGH Circuit breaker
+  assertResourceManagerStat(resource_manager_high.connections(), remaining_cx_high, cx_open_high,
+                            true, 0U, 2U, 0U);
 
-  // test HIGH priority (1st connection)
+  // remove connection and check state for priority DEFAULT
+  resource_manager_default.connections().dec();
+  // check the state of DEFAULT Circuit breaker
+  assertResourceManagerStat(resource_manager_default.connections(), remaining_cx_default,
+                            cx_open_default, true, 0U, 1U, 0U);
+  // check the state of HIGH Circuit breaker
+  assertResourceManagerStat(resource_manager_high.connections(), remaining_cx_high, cx_open_high,
+                            true, 0U, 2U, 0U);
+
+  // increment connection for priority HIGH  (1nd connection)
   resource_manager_high.connections().inc();
+  // check the state of HIGH Circuit breaker
   assertResourceManagerStat(resource_manager_high.connections(), remaining_cx_high, cx_open_high,
                             true, 1U, 1U, 0U);
-
-  // test HIGH priority (2nd connection)
-  resource_manager_high.connections().inc();
-  assertResourceManagerStat(resource_manager_high.connections(), remaining_cx_high, cx_open_high,
-                            false, 2U, 0U, 1U);
-
-  // remove connection and check state
-  resource_manager_default.connections().dec();
+  // check the state of DEFAULT Circuit breaker
   assertResourceManagerStat(resource_manager_default.connections(), remaining_cx_default,
                             cx_open_default, true, 0U, 1U, 0U);
 
+  // increment connection for priority HIGH  (2nd connection)
+  resource_manager_high.connections().inc();
+  // check the state of HIGH Circuit breaker
+  assertResourceManagerStat(resource_manager_high.connections(), remaining_cx_high, cx_open_high,
+                            false, 2U, 0U, 1U);
+  // check the state of DEFAULT Circuit breaker
+  assertResourceManagerStat(resource_manager_default.connections(), remaining_cx_default,
+                            cx_open_default, true, 0U, 1U, 0U);
+
+  // remove connection and check state for priority HIGH
   resource_manager_high.connections().dec();
+    // check the state of HIGH Circuit breaker
   assertResourceManagerStat(resource_manager_high.connections(), remaining_cx_high, cx_open_high,
                             true, 1U, 1U, 0U);
+  // check the state of DEFAULT Circuit breaker
+  assertResourceManagerStat(resource_manager_default.connections(), remaining_cx_default,
+                            cx_open_default, true, 0U, 1U, 0U);
 
+  // remove connection and check state for priority HIGH
   resource_manager_high.connections().dec();
+    // check the state of HIGH Circuit breaker
   assertResourceManagerStat(resource_manager_high.connections(), remaining_cx_high, cx_open_high,
                             true, 0U, 2U, 0U);
+  // check the state of DEFAULT Circuit breaker
+  assertResourceManagerStat(resource_manager_default.connections(), remaining_cx_default,
+                            cx_open_default, true, 0U, 1U, 0U);
 }
 
 TEST_F(AggregateClusterTest, CircuitBreakerMaxPendingRequestsTest) {
