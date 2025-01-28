@@ -369,7 +369,7 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxConnectionsHighPriorityTest) {
 
   // remove connection and check state for priority HIGH
   resource_manager_high.connections().dec();
-    // check the state of HIGH Circuit breaker
+  // check the state of HIGH Circuit breaker
   assertResourceManagerStat(resource_manager_high.connections(), remaining_cx_high, cx_open_high,
                             true, 1U, 1U, 0U);
   // check the state of DEFAULT Circuit breaker
@@ -378,7 +378,7 @@ TEST_F(AggregateClusterTest, CircuitBreakerMaxConnectionsHighPriorityTest) {
 
   // remove connection and check state for priority HIGH
   resource_manager_high.connections().dec();
-    // check the state of HIGH Circuit breaker
+  // check the state of HIGH Circuit breaker
   assertResourceManagerStat(resource_manager_high.connections(), remaining_cx_high, cx_open_high,
                             true, 0U, 2U, 0U);
   // check the state of DEFAULT Circuit breaker
