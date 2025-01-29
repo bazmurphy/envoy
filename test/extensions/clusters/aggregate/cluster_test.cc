@@ -135,8 +135,8 @@ public:
   }
 
   Stats::Gauge& getCircuitBreakersStatByPriority(std::string priority, std::string stat) {
-    std::string stat_name_ = "circuit_breakers." + priority + "." + stat;
-    Stats::StatNameManagedStorage statStore(stat_name_,
+    std::string stat_name = "circuit_breakers." + priority + "." + stat;
+    Stats::StatNameManagedStorage statStore(stat_name,
                                             cluster_->info()->statsScope().symbolTable());
     return cluster_->info()->statsScope().gaugeFromStatName(statStore.statName(),
                                                             Stats::Gauge::ImportMode::Accumulate);
