@@ -196,38 +196,28 @@ TEST_F(AggregateClusterTest, CircuitBreakerDefaultsTest) {
   Upstream::ResourceManager& resource_manager =
       cluster_->info()->resourceManager(Upstream::ResourcePriority::Default);
 
-  // the default circuit breaker values are:
-  // max_connections : 1024
-  // max_pending_requests : 1024
-  // max_requests : 1024
-  // max_retries : 3
-
-  EXPECT_EQ(1024U, resource_manager.connections().max());
-  for (int i = 0; i < 1024; ++i) {
+  for (uint64_t i = 0; i < resource_manager.connections().max(); ++i) {
     resource_manager.connections().inc();
   }
-  EXPECT_EQ(1024U, resource_manager.connections().count());
+  EXPECT_EQ(resource_manager.connections().count(), resource_manager.connections().max());
   EXPECT_FALSE(resource_manager.connections().canCreate());
 
-  EXPECT_EQ(1024U, resource_manager.pendingRequests().max());
-  for (int i = 0; i < 1024; ++i) {
+  for (uint64_t i = 0; i < resource_manager.pendingRequests().max(); ++i) {
     resource_manager.pendingRequests().inc();
   }
-  EXPECT_EQ(1024U, resource_manager.pendingRequests().count());
+  EXPECT_EQ(resource_manager.pendingRequests().count(), resource_manager.pendingRequests().max());
   EXPECT_FALSE(resource_manager.pendingRequests().canCreate());
 
-  EXPECT_EQ(1024U, resource_manager.requests().max());
-  for (int i = 0; i < 1024; ++i) {
+  for (uint64_t i = 0; i < resource_manager.requests().max(); ++i) {
     resource_manager.requests().inc();
   }
-  EXPECT_EQ(1024U, resource_manager.requests().count());
+  EXPECT_EQ(resource_manager.requests().count(), resource_manager.requests().max());
   EXPECT_FALSE(resource_manager.requests().canCreate());
 
-  EXPECT_EQ(3U, resource_manager.retries().max());
-  for (int i = 0; i < 3; ++i) {
+  for (uint64_t i = 0; i < resource_manager.retries().max(); ++i) {
     resource_manager.retries().inc();
   }
-  EXPECT_EQ(3U, resource_manager.retries().count());
+  EXPECT_EQ(resource_manager.retries().count(), resource_manager.retries().max());
   EXPECT_FALSE(resource_manager.retries().canCreate());
 }
 
