@@ -199,21 +199,25 @@ TEST_F(AggregateClusterTest, CircuitBreakerDefaultsTest) {
   for (uint64_t i = 0; i < resource_manager.connections().max(); ++i) {
     resource_manager.connections().inc();
   }
+  EXPECT_EQ(resource_manager.connections().count(), resource_manager.connections().max());
   EXPECT_FALSE(resource_manager.connections().canCreate());
 
   for (uint64_t i = 0; i < resource_manager.pendingRequests().max(); ++i) {
     resource_manager.pendingRequests().inc();
   }
+  EXPECT_EQ(resource_manager.pendingRequests().count(), resource_manager.pendingRequests().max());
   EXPECT_FALSE(resource_manager.pendingRequests().canCreate());
 
   for (uint64_t i = 0; i < resource_manager.requests().max(); ++i) {
     resource_manager.requests().inc();
   }
+  EXPECT_EQ(resource_manager.requests().count(), resource_manager.requests().max());
   EXPECT_FALSE(resource_manager.requests().canCreate());
 
   for (uint64_t i = 0; i < resource_manager.retries().max(); ++i) {
     resource_manager.retries().inc();
   }
+  EXPECT_EQ(resource_manager.retries().count(), resource_manager.retries().max());
   EXPECT_FALSE(resource_manager.retries().canCreate());
 }
 
