@@ -303,5 +303,310 @@ TEST_P(AggregateIntegrationTest, PreviousPrioritiesRetryPredicate) {
   cleanupUpstreamAndDownstream();
 }
 
+TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
+  // code uses a config() thats passed in to the constructor
+  // if we want to use an alternate config we need to do that at construction time
+
+  // agg_clus
+  //   - clust1
+  //   - clust2
+
+  // 1. setup two circuit breakers
+  //    - one at the aggregate_cluster level
+  //    - one at cluster1 level
+  // and then we can confirm that the aggregate_cluster circuit breaker does not get used   [this WILL get used for "retries" because that mechanic lives there]
+
+  // 2. send one request through to /aggregate_cluster (and prevent it from completing)
+  
+  // 3. check the circuit breaker states
+  //    - aggregate_cluster should be 0 (default or normal state == "closed")
+  //    - cluster1 should be 1 (which means triggered == "open")
+
+  // 4. send another request through (and prevent it from completing) 
+  //    - this request should fail
+
+  // 5. send another request but this time to the /cluster1 route
+  //    - this request should also fail (because the cluster1 circuit breaker is 1 (open))
+
+  initialize();
+
+  // cluster1_.mutable_circuit_breakers()->add_thresholds()->mutable_max_connections()->set_value(1);
+  // cluster2_.mutable_circuit_breakers()->add_thresholds()->mutable_max_connections()->set_value(1);
+
+  std::cout << "cluster1_ Has Circuit Breakers: " << cluster1_.has_circuit_breakers() << std::endl;
+
+  //  circuit_breakers:
+  //   thresholds:
+  //   - priority: DEFAULT
+  //     max_connections: 1
+  //   - priority: HIGH
+  //     max_connections: 1
+
+  auto* threshold = cluster1_.mutable_circuit_breakers()->mutable_thresholds()->Add();
+  threshold->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
+  threshold->mutable_max_connections()->set_value(1);
+  threshold->mutable_max_pending_requests()->set_value(1);
+  threshold->mutable_max_requests()->set_value(1);
+  threshold->mutable_max_retries()->set_value(1);
+
+  std::cout << "cluster1_ Thresholds Size: " << cluster1_.mutable_circuit_breakers()->thresholds_size() << std::endl;
+
+  std::cout << "cluster1_ Threshold DEFAULT Max Connections: " << threshold->max_connections().value() << std::endl;
+  std::cout << "cluster1_ Threshold DEFAULT Max Pending Requests: " << threshold->max_pending_requests().value() << std::endl;
+  std::cout << "cluster1_ Threshold DEFAULT Max Requests: " << threshold->max_requests().value() << std::endl;
+  std::cout << "cluster1_ Threshold DEFAULT Max Retries: " << threshold->max_retries().value() << std::endl;
+
+  // auto* cluster1_circuit_breaker_settings = cluster1_.mutable_circuit_breakers();
+  // auto* cluster2_circuit_breaker_settings = cluster2_.mutable_circuit_breakers();
+
+  // auto* cluster1_circuit_breaker_default_priority =
+  // cluster1_circuit_breaker_settings->add_thresholds();
+  // cluster1_circuit_breaker_default_priority->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
+  // cluster1_circuit_breaker_default_priority->mutable_max_connections;
+}
+
 } // namespace
 } // namespace Envoy
+
+// ----------- NOTES 
+
+// the specific constructor used by this class:
+
+// [0] (in here at the top)
+AggregateIntegrationTest() : HttpIntegrationTest(Http::CodecType::HTTP1, std::get<0>(GetParam()), config()),
+
+// [1] test/integration/http_integration.h (132-133)
+HttpIntegrationTest(Http::CodecType downstream_protocol, Network::Address::IpVersion version, const std::string& config);
+
+// [2] test/integration/http_integration.cc (325-334)
+HttpIntegrationTest::HttpIntegrationTest(Http::CodecType downstream_protocol,
+                                         Network::Address::IpVersion version,
+                                         const std::string& config)
+    : HttpIntegrationTest::HttpIntegrationTest(
+          downstream_protocol,
+          [version](int) {
+            return Network::Utility::parseInternetAddressNoThrow(
+                Network::Test::getLoopbackAddressString(version), 0);
+          },
+          version, config) {}
+
+// [3] test/integration/http_integration.h (142-144)
+HttpIntegrationTest(Http::CodecType downstream_protocol,
+  const InstanceConstSharedPtrFn& upstream_address_fn,
+  Network::Address::IpVersion version, const std::string& config);
+
+// [4] test/integration/http_integration.cc (336-372)
+HttpIntegrationTest::HttpIntegrationTest(Http::CodecType downstream_protocol,
+                                         const InstanceConstSharedPtrFn& upstream_address_fn,
+                                         Network::Address::IpVersion version,
+                                         const std::string& config)
+    : BaseIntegrationTest(upstream_address_fn, version, config),
+      downstream_protocol_(downstream_protocol), quic_stat_names_(stats_store_.symbolTable()) {
+  // Legacy integration tests expect the default listener to be named "http" for
+  // lookupPort calls.
+  config_helper_.renameListener("http");
+  config_helper_.setClientCodec(typeToCodecType(downstream_protocol_));
+  // Allow extension lookup by name in the integration tests.
+  config_helper_.addRuntimeOverride("envoy.reloadable_features.no_extension_lookup_by_name",
+                                    "false");
+
+  config_helper_.addConfigModifier(
+      [](envoy::extensions::filters::network::http_connection_manager::v3::HttpConnectionManager&
+             hcm) {
+        auto* range = hcm.mutable_internal_address_config()->add_cidr_ranges();
+        // Set loopback to be trusted so tests can set x-envoy headers.
+        range->set_address_prefix("127.0.0.1");
+        range->mutable_prefix_len()->set_value(32);
+        // Legacy tests also set XFF: 10.0.0.1
+        range->set_address_prefix("10.0.0.0");
+        range->mutable_prefix_len()->set_value(8);
+        range = hcm.mutable_internal_address_config()->add_cidr_ranges();
+        range->set_address_prefix("::1");
+        range->mutable_prefix_len()->set_value(128);
+      });
+
+#ifdef ENVOY_ENABLE_QUIC
+  if (downstream_protocol_ == Http::CodecType::HTTP3) {
+    // Needed to config QUIC transport socket factory, and needs to be added before base class calls
+    // initialize().
+    config_helper_.addQuicDownstreamTransportSocketConfig();
+  }
+#endif
+}
+
+// [5] (from above this) test/integration/http_integration.cc
+BaseIntegrationTest(upstream_address_fn, version, config)
+
+// [6] test/integration/base_integration_test.h (73-75)
+BaseIntegrationTest(const InstanceConstSharedPtrFn& upstream_address_fn,
+  Network::Address::IpVersion version,
+  const std::string& config = ConfigHelper::httpProxyConfig());
+
+// [7] test/integration/base_integration_test.cc (86-89)
+BaseIntegrationTest::BaseIntegrationTest(const InstanceConstSharedPtrFn& upstream_address_fn,
+                                         Network::Address::IpVersion version,
+                                         const std::string& config)
+    : BaseIntegrationTest(upstream_address_fn, version, configToBootstrap(config)) {}
+
+// [8] from above - delegate constructor
+BaseIntegrationTest(upstream_address_fn, version, configToBootstrap(config)
+
+// [8-sidequest] test/integration/base_integration_test.cc (32-41)
+// this is the configToBootstrap function (see above) that presumably converts the raw yaml string into a "Bootstrap" typed object(?)
+// ""unmarshal"" the config into the bootstrap (load the yaml from the string, convert that into the bootstrap object)
+envoy::config::bootstrap::v3::Bootstrap configToBootstrap(const std::string& config) {
+  #ifdef ENVOY_ENABLE_YAML
+    envoy::config::bootstrap::v3::Bootstrap bootstrap;
+    TestUtility::loadFromYaml(config, bootstrap);
+    return bootstrap;
+  #else
+    UNREFERENCED_PARAMETER(config);
+    PANIC("YAML support compiled out: can't parse YAML");
+  #endif
+  }
+
+// [9] test/integration/base_integration_test.cc (52-84)
+BaseIntegrationTest::BaseIntegrationTest(const InstanceConstSharedPtrFn& upstream_address_fn,
+                                         Network::Address::IpVersion version,
+                                         const envoy::config::bootstrap::v3::Bootstrap& bootstrap)
+    : api_(Api::createApiForTest(stats_store_, time_system_)),
+      mock_buffer_factory_(new NiceMock<MockBufferFactory>),
+      dispatcher_(api_->allocateDispatcher("test_thread",
+                                           Buffer::WatermarkFactoryPtr{mock_buffer_factory_})),
+      version_(version), upstream_address_fn_(upstream_address_fn),
+      config_helper_(version, bootstrap),
+      default_log_level_(TestEnvironment::getOptions().logLevel()) {
+  Envoy::Server::validateProtoDescriptors();
+  // This is a hack, but there are situations where we disconnect fake upstream connections and
+  // then we expect the server connection pool to get the disconnect before the next test starts.
+  // This does not always happen. This pause should allow the server to pick up the disconnect
+  // notification and clear the pool connection if necessary. A real fix would require adding fairly
+  // complex test hooks to the server and/or spin waiting on stats, neither of which I think are
+  // necessary right now.
+  timeSystem().realSleepDoNotUseWithoutScrutiny(std::chrono::milliseconds(10));
+  ON_CALL(*mock_buffer_factory_, createBuffer_(_, _, _))
+      .WillByDefault(Invoke([](std::function<void()> below_low, std::function<void()> above_high,
+                               std::function<void()> above_overflow) -> Buffer::Instance* {
+        return new Buffer::WatermarkBuffer(below_low, above_high, above_overflow);
+      }));
+  ON_CALL(factory_context_.server_context_, api()).WillByDefault(ReturnRef(*api_));
+  ON_CALL(factory_context_, statsScope()).WillByDefault(ReturnRef(*stats_store_.rootScope()));
+  ON_CALL(factory_context_, sslContextManager()).WillByDefault(ReturnRef(context_manager_));
+  ON_CALL(factory_context_.server_context_, threadLocal()).WillByDefault(ReturnRef(thread_local_));
+
+#ifndef ENVOY_ADMIN_FUNCTIONALITY
+  config_helper_.addConfigModifier(
+      [&](envoy::config::bootstrap::v3::Bootstrap& bootstrap) -> void { bootstrap.clear_admin(); });
+#endif
+}
+
+// [11]
+
+// TODO
+
+
+// ----------
+// Member VARIABLES in HttpIntegrationTest that maybe of use
+// test/integration/http_integration.h (359+)
+
+// The client making requests to Envoy.
+IntegrationCodecClientPtr codec_client_;
+// A placeholder for the first upstream connection.
+FakeHttpConnectionPtr fake_upstream_connection_;
+// A placeholder for the first request received at upstream.
+FakeStreamPtr upstream_request_;
+
+// The response headers sent by sendRequestAndWaitForResponse() by default.
+Http::TestResponseHeaderMapImpl default_response_headers_{{":status", "200"}};
+Http::TestRequestHeaderMapImpl default_request_headers_{{":method", "GET"},
+                                                        {":path", "/test/long/url"},
+                                                        {":scheme", "http"},
+                                                        {":authority", "sni.lyft.com"}};
+
+// The codec type for the client-to-Envoy connection [this is overriden to HTTP2 in our tests]
+Http::CodecType downstream_protocol_{Http::CodecType::HTTP1};
+
+// ----------
+// Member METHODS in HttpIntegrationTest that maybe of use
+
+// TODO
+
+
+// ----------
+// Member VARIABLES in BaseIntegrationTest that maybe of use
+// test/integration/base_integration_test.h (??)
+
+// work out what this is: (line 151)
+Api::ApiPtr api_;
+
+// Make sure the test server will be torn down after any fake client.
+// The test server owns the runtime, which is often accessed by client and
+// fake upstream codecs and must outlast them.
+IntegrationTestServerPtr test_server_;
+
+// ^^ because from above in this file we can see:
+test_server_->waitForGaugeGe("cluster_manager.active_clusters", 4);
+// and thats how we check the circuit breaker triggered or not...
+
+// IP Address to use when binding sockets on upstreams.
+InstanceConstSharedPtrFn upstream_address_fn_;
+
+// [! LOOK INTO WHAT THIS IS/HAS]
+// The config for envoy start-up.
+ConfigHelper config_helper_;
+
+// The fake upstreams_ are created using the context_manager, so make sure
+// they are destroyed before it is.
+std::vector<std::unique_ptr<FakeUpstream>> fake_upstreams_;
+
+// Target number of upstreams.
+uint32_t fake_upstreams_count_{1};
+
+// The number of worker threads that the test server uses.
+uint32_t concurrency_{1};
+
+// Configuration for the fake upstream.
+FakeUpstreamConfig upstream_config_{time_system_};
+
+// ----------
+// Member METHODS in BaseIntegrationTest that maybe of use
+// test/integration/base_integration_test.h (??)
+
+// Initialize the basic proto configuration, create fake upstreams, and start Envoy.
+virtual void initialize();
+// Set up the fake upstream connections. This is called by initialize() and
+// is virtual to allow subclass overrides.
+virtual void createUpstreams();
+// Create a single upstream, based on the supplied config.
+void createUpstream(Network::Address::InstanceConstSharedPtr endpoint, FakeUpstreamConfig& config);
+// Sets upstream_protocol_ and alters the upstream protocol in the config_helper_
+void setUpstreamProtocol(Http::CodecType protocol);
+
+
+// this is why we pass in "http" and get back the port:
+// (from above in this file: codec_client_ = makeHttpConnection(lookupPort("http"));)
+// Test-wide port map.
+void registerPort(const std::string& key, uint32_t port);
+uint32_t lookupPort(const std::string& key);
+
+
+Network::ClientConnectionPtr makeClientConnection(uint32_t port);
+
+// Functions for testing reloadable config (xDS)
+virtual void createXdsUpstream();
+void createXdsConnection();
+void cleanUpXdsConnection(); // this is used in TearDown (in this file)
+
+// ---------
+
+
+// IntegrationTestServer
+// test/integration/server.h
+
+
+// VARIABLES
+
+
+// METHODS
+std::vector<Stats::GaugeSharedPtr> gauges() override { return statStore().gauges(); }
+
