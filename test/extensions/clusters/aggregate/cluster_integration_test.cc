@@ -303,88 +303,88 @@ TEST_P(AggregateIntegrationTest, PreviousPrioritiesRetryPredicate) {
   cleanupUpstreamAndDownstream();
 }
 
+// TEST PLAN
+
+// uses a config() thats passed in to the constructor
+// if we want to use an alternate config we need to do that at construction time(?)
+// or can we edit it before initialize(?)
+
+// aggregate_cluster
+//   - cluster1
+//   - cluster2 (ideally we don't want this here (so we need to remove it WITHOUT affecting the other tests), and want to maybe add it later)
+
+// 1. setup two circuit breakers
+//    - one at the aggregate_cluster level
+//    - one at cluster1 level
+// and then we can confirm that the aggregate_cluster circuit breaker does not get used   [this WILL get used for "retries" because that mechanic lives there]
+
+// 2. send one request through to /aggregate_cluster (and prevent it from completing)
+
+// 3. check the circuit breaker states
+//    - aggregate_cluster should be 0 (default or normal state == "closed")
+//    - cluster1 should be 1 (which means triggered == "open")
+
+// 4. send another request through (and prevent it from completing) 
+//    - this request should fail
+
+// 5. send another request but this time to the /cluster1 route
+//    - this request should also fail (because the cluster1 circuit breaker is 1 (open))
+
 TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
-  // code uses a config() thats passed in to the constructor
-  // if we want to use an alternate config we need to do that at construction time
-
-  // aggregate_cluster
-  //   - cluster1
-  //   - cluster2
-
-  // 1. setup two circuit breakers
-  //    - one at the aggregate_cluster level
-  //    - one at cluster1 level
-  // and then we can confirm that the aggregate_cluster circuit breaker does not get used   [this WILL get used for "retries" because that mechanic lives there]
-
-  // 2. send one request through to /aggregate_cluster (and prevent it from completing)
-  
-  // 3. check the circuit breaker states
-  //    - aggregate_cluster should be 0 (default or normal state == "closed")
-  //    - cluster1 should be 1 (which means triggered == "open")
-
-  // 4. send another request through (and prevent it from completing) 
-  //    - this request should fail
-
-  // 5. send another request but this time to the /cluster1 route
-  //    - this request should also fail (because the cluster1 circuit breaker is 1 (open))
-
   std::cout << "---------- 01 CONFIG MODIFY START" << std::endl;
 
-  // config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
-  //   for (auto& cluster : *bootstrap.mutable_static_resources()->mutable_clusters()) {    
-  //     std::cout << "cluster.name(): " << cluster.name() << std::endl;
-  //     // if (cluster.name() == "aggregate_cluster") {  
-  //     //   // add circuit breaker settings to the aggregate cluster
-  //     //   auto* threshold = cluster.mutable_circuit_breakers()->add_thresholds();
-  //     //   threshold->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-  //     //   threshold->mutable_max_connections()->set_value(1);
-  //     //   threshold->mutable_max_pending_requests()->set_value(1);
-  //     //   threshold->mutable_max_requests()->set_value(1);
-  //     //   threshold->mutable_max_retries()->set_value(1);
-  //     // }
-  //   }
-  // });
-  
-  // config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
-  //   auto* cluster_0 = bootstrap.mutable_static_resources()->mutable_clusters()->Mutable(0);
-  //   std::cout << "cluster.name(): " << cluster_0->name() << std::endl;
-  //   // ASSERT(cluster_0->name() == "cluster_0");
-  // });
-
   config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
-    auto* cluster_index_0 = bootstrap.mutable_static_resources()->mutable_clusters(0);
-    std::cout << "cluster_index_0 name(): " << cluster_index_0->name() << std::endl;
-    auto* cluster_index_1 = bootstrap.mutable_static_resources()->mutable_clusters(1);
-    std::cout << "cluster_index_1 name(): " << cluster_index_1->name() << std::endl;
+    auto* static_resources = bootstrap.mutable_static_resources();
 
+    auto* static_cluster_index_0 = static_resources->mutable_clusters(0);
+    std::cout << "static_cluster_index_0 name(): " << static_cluster_index_0->name() << std::endl;
 
-    std::cout << "cluster_index_0 has_circuit_breakers(): " << cluster_index_0->has_circuit_breakers() << std::endl;
-    std::cout << "BEFORE cluster_index_1 has_circuit_breakers(): " << cluster_index_1->has_circuit_breakers() << std::endl;
+    auto* static_cluster_index_1 = static_resources->mutable_clusters(1);
+    std::cout << "static_cluster_index_1 name(): " << static_cluster_index_1->name() << std::endl;
 
-    auto* cluster_index_1_circuit_breakers = cluster_index_1->mutable_circuit_breakers();
+    // in the original config at the top:
 
-    // auto* default_threshold = cluster1_.mutable_circuit_breakers()->mutable_thresholds()->Add();
-    auto* cluster_index_1_circuit_breakers_threshold_default = cluster_index_1_circuit_breakers->add_thresholds();
-    cluster_index_1_circuit_breakers_threshold_default->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
+    // - name: aggregate_cluster
+    // connect_timeout: 0.25s
+    // lb_policy: CLUSTER_PROVIDED
+    // cluster_type:
+    //   name: envoy.clusters.aggregate
+    //   typed_config:
+    //     "@type": type.googleapis.com/envoy.extensions.clusters.aggregate.v3.ClusterConfig
+    //     clusters:
+    //     - cluster_1
+    //     - cluster_2
 
-    cluster_index_1_circuit_breakers_threshold_default->mutable_max_connections()->set_value(1);
-    cluster_index_1_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(1);
-    cluster_index_1_circuit_breakers_threshold_default->mutable_max_requests()->set_value(1);
-    cluster_index_1_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1);
+    // but how do we remove cluster_2 from that list???
 
-    auto* cluster_index_1_circuit_breakers_threshold_high = cluster_index_1_circuit_breakers->add_thresholds();
-    cluster_index_1_circuit_breakers_threshold_high->set_priority(envoy::config::core::v3::RoutingPriority::HIGH);
+    // auto* cluster_type = static_cluster_index_1->mutable_cluster_type();
 
-    cluster_index_1_circuit_breakers_threshold_high->mutable_max_connections()->set_value(1);
-    cluster_index_1_circuit_breakers_threshold_high->mutable_max_pending_requests()->set_value(1);
-    cluster_index_1_circuit_breakers_threshold_high->mutable_max_requests()->set_value(1);
-    cluster_index_1_circuit_breakers_threshold_high->mutable_max_retries()->set_value(1);
+    std::cout << "BEFORE static_cluster_index_0 has_circuit_breakers(): " << static_cluster_index_0->has_circuit_breakers() << std::endl;
+    std::cout << "BEFORE static_cluster_index_1 has_circuit_breakers(): " << static_cluster_index_1->has_circuit_breakers() << std::endl;
 
-    std::cout << "AFTER cluster_index_1 has_circuit_breakers(): " << cluster_index_1->has_circuit_breakers() << std::endl;
+    auto* static_cluster_index_1_circuit_breakers = static_cluster_index_1->mutable_circuit_breakers();
+
+    std::cout << "BEFORE static_cluster_index_1 thresholds_size(): " << static_cluster_index_1_circuit_breakers->thresholds_size() << std::endl;
+
+    auto* static_cluster_index_1_circuit_breakers_threshold_default = static_cluster_index_1_circuit_breakers->add_thresholds();
+    static_cluster_index_1_circuit_breakers_threshold_default->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
+    static_cluster_index_1_circuit_breakers_threshold_default->mutable_max_connections()->set_value(1);
+    static_cluster_index_1_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(1);
+    static_cluster_index_1_circuit_breakers_threshold_default->mutable_max_requests()->set_value(1);
+    static_cluster_index_1_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1);
+
+    auto* static_cluster_index_1_circuit_breakers_threshold_high = static_cluster_index_1_circuit_breakers->add_thresholds();
+    static_cluster_index_1_circuit_breakers_threshold_high->set_priority(envoy::config::core::v3::RoutingPriority::HIGH);
+    static_cluster_index_1_circuit_breakers_threshold_high->mutable_max_connections()->set_value(1);
+    static_cluster_index_1_circuit_breakers_threshold_high->mutable_max_pending_requests()->set_value(1);
+    static_cluster_index_1_circuit_breakers_threshold_high->mutable_max_requests()->set_value(1);
+    static_cluster_index_1_circuit_breakers_threshold_high->mutable_max_retries()->set_value(1);
+
+    std::cout << "AFTER static_cluster_index_0 has_circuit_breakers(): " << static_cluster_index_0->has_circuit_breakers() << std::endl;
+    std::cout << "AFTER static_cluster_index_1 has_circuit_breakers(): " << static_cluster_index_1->has_circuit_breakers() << std::endl;
+
+    std::cout << "AFTER static_cluster_index_1 thresholds_size(): " << static_cluster_index_1_circuit_breakers->thresholds_size() << std::endl;
   });
-
-  // auto* cluster_index_1 = bootstrap.mutable_static_resources()->mutable_clusters(1);
-  // auto* static_resources = bootstrap_.mutable_static_resources()->mutable_clusters();
 
   std::cout << "---------- 02 CONFIG MODIFY FINISH" << std::endl;
 
@@ -394,42 +394,60 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
   
   std::cout << "---------- 04 INITIALIZE FINISH" << std::endl;
 
-  // std::vector<std::unique_ptr<FakeUpstream>> Envoy::BaseIntegrationTest::fake_upstreams_
-  // how to get access to the aggregate_cluster ?
+  std::cout << "cluster1_ name(): " << cluster1_.name() << std::endl;
 
-  // cluster1_.mutable_circuit_breakers()->add_thresholds()->mutable_max_connections()->set_value(1);
-  // cluster2_.mutable_circuit_breakers()->add_thresholds()->mutable_max_connections()->set_value(1);
+  std::cout << "BEFORE cluster1_ has_circuit_breakers(): " << cluster1_.has_circuit_breakers() << std::endl;
 
-  // std::cout << "cluster1_ Has Circuit Breakers: " << cluster1_.has_circuit_breakers() << std::endl;
+  auto* dynamic_cluster1_circuit_breakers = cluster1_.mutable_circuit_breakers();
 
-  //  circuit_breakers:
-  //   thresholds:
-  //   - priority: DEFAULT
-  //     max_connections: 1
-  //   - priority: HIGH
-  //     max_connections: 1
+  std::cout << "BEFORE dynamic_cluster1_circuit_breakers thresholds_size(): " << dynamic_cluster1_circuit_breakers->thresholds_size() << std::endl;
 
-  // auto* threshold = cluster1_.mutable_circuit_breakers()->mutable_thresholds()->Add();
-  // threshold->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-  // threshold->mutable_max_connections()->set_value(1);
-  // threshold->mutable_max_pending_requests()->set_value(1);
-  // threshold->mutable_max_requests()->set_value(1);
-  // threshold->mutable_max_retries()->set_value(1);
+  auto* dynamic_cluster1_circuit_breakers_threshold_default = dynamic_cluster1_circuit_breakers->add_thresholds();
+  dynamic_cluster1_circuit_breakers_threshold_default->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
+  dynamic_cluster1_circuit_breakers_threshold_default->mutable_max_connections()->set_value(1);
+  dynamic_cluster1_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(1);
+  dynamic_cluster1_circuit_breakers_threshold_default->mutable_max_requests()->set_value(1);
+  dynamic_cluster1_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1);
 
-  // std::cout << "cluster1_ Thresholds Size: " << cluster1_.mutable_circuit_breakers()->thresholds_size() << std::endl;
+  auto* dynamic_cluster1_circuit_breakers_threshold_high = dynamic_cluster1_circuit_breakers->add_thresholds();
+  dynamic_cluster1_circuit_breakers_threshold_high->set_priority(envoy::config::core::v3::RoutingPriority::HIGH);
+  dynamic_cluster1_circuit_breakers_threshold_high->mutable_max_connections()->set_value(1);
+  dynamic_cluster1_circuit_breakers_threshold_high->mutable_max_pending_requests()->set_value(1);
+  dynamic_cluster1_circuit_breakers_threshold_high->mutable_max_requests()->set_value(1);
+  dynamic_cluster1_circuit_breakers_threshold_high->mutable_max_retries()->set_value(1);
 
-  // std::cout << "cluster1_ Threshold DEFAULT Max Connections: " << threshold->max_connections().value() << std::endl;
-  // std::cout << "cluster1_ Threshold DEFAULT Max Pending Requests: " << threshold->max_pending_requests().value() << std::endl;
-  // std::cout << "cluster1_ Threshold DEFAULT Max Requests: " << threshold->max_requests().value() << std::endl;
-  // std::cout << "cluster1_ Threshold DEFAULT Max Retries: " << threshold->max_retries().value() << std::endl;
+  std::cout << "AFTER cluster1_ has_circuit_breakers(): " << cluster1_.has_circuit_breakers() << std::endl;
 
-  // auto* cluster1_circuit_breaker_settings = cluster1_.mutable_circuit_breakers();
-  // auto* cluster2_circuit_breaker_settings = cluster2_.mutable_circuit_breakers();
+  std::cout << "AFTER dynamic_cluster1_circuit_breakers thresholds_size(): " << dynamic_cluster1_circuit_breakers->thresholds_size() << std::endl;
 
-  // auto* cluster1_circuit_breaker_default_priority =
-  // cluster1_circuit_breaker_settings->add_thresholds();
-  // cluster1_circuit_breaker_default_priority->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-  // cluster1_circuit_breaker_default_priority->mutable_max_connections;
+  std::cout << "cluster1_ threshold default max_connections().value(): " << dynamic_cluster1_circuit_breakers_threshold_default->max_connections().value() << std::endl;
+  std::cout << "cluster1_ threshold default max_pending_requests().value(): " << dynamic_cluster1_circuit_breakers_threshold_default->max_pending_requests().value() << std::endl;
+  std::cout << "cluster1_ threshold default max_requests().value(): " << dynamic_cluster1_circuit_breakers_threshold_default->max_requests().value() << std::endl;
+  std::cout << "cluster1_ threshold default max_retries().value(): " << dynamic_cluster1_circuit_breakers_threshold_default->max_retries().value() << std::endl;
+
+  // log output:
+
+  // ---------- 01 CONFIG MODIFY START
+  // ---------- 02 CONFIG MODIFY FINISH
+  // ---------- 03 INITIALIZE START
+  // static_cluster_index_0 name(): my_cds_cluster
+  // static_cluster_index_1 name(): aggregate_cluster
+  // BEFORE static_cluster_index_0 has_circuit_breakers(): 0
+  // BEFORE static_cluster_index_1 has_circuit_breakers(): 0
+  // BEFORE static_cluster_index_1 thresholds_size(): 0
+  // AFTER static_cluster_index_0 has_circuit_breakers(): 0
+  // AFTER static_cluster_index_1 has_circuit_breakers(): 1
+  // AFTER static_cluster_index_1 thresholds_size(): 2
+  // ---------- 04 INITIALIZE FINISH
+  // cluster1_ name(): cluster_1
+  // BEFORE cluster1_ has_circuit_breakers(): 0
+  // BEFORE dynamic_cluster1_circuit_breakers thresholds_size(): 0
+  // AFTER cluster1_ has_circuit_breakers(): 1
+  // AFTER dynamic_cluster1_circuit_breakers thresholds_size(): 2
+  // cluster1_ threshold default max_connections().value(): 1
+  // cluster1_ threshold default max_pending_requests().value(): 1
+  // cluster1_ threshold default max_requests().value(): 1
+  // cluster1_ threshold default max_retries().value(): 1
 }
 
 } // namespace
