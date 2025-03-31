@@ -401,17 +401,17 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
     // set the aggregate_cluster circuit breakers
     auto* aggregate_cluster_circuit_breakers_threshold_default = aggregate_cluster_circuit_breakers->add_thresholds();
     aggregate_cluster_circuit_breakers_threshold_default->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-    aggregate_cluster_circuit_breakers_threshold_default->mutable_max_connections()->set_value(1);
+    // aggregate_cluster_circuit_breakers_threshold_default->mutable_max_connections()->set_value(1);
     aggregate_cluster_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(1);
-    aggregate_cluster_circuit_breakers_threshold_default->mutable_max_requests()->set_value(1);
-    aggregate_cluster_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1);
+    // aggregate_cluster_circuit_breakers_threshold_default->mutable_max_requests()->set_value(1);
+    // aggregate_cluster_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1);
 
     auto* aggregate_cluster_circuit_breakers_threshold_high = aggregate_cluster_circuit_breakers->add_thresholds();
     aggregate_cluster_circuit_breakers_threshold_high->set_priority(envoy::config::core::v3::RoutingPriority::HIGH);
-    aggregate_cluster_circuit_breakers_threshold_high->mutable_max_connections()->set_value(1);
+    // aggregate_cluster_circuit_breakers_threshold_high->mutable_max_connections()->set_value(1);
     aggregate_cluster_circuit_breakers_threshold_high->mutable_max_pending_requests()->set_value(1);
-    aggregate_cluster_circuit_breakers_threshold_high->mutable_max_requests()->set_value(1);
-    aggregate_cluster_circuit_breakers_threshold_high->mutable_max_retries()->set_value(1);
+    // aggregate_cluster_circuit_breakers_threshold_high->mutable_max_requests()->set_value(1);
+    // aggregate_cluster_circuit_breakers_threshold_high->mutable_max_retries()->set_value(1);
 
     // std::cout << "AFTER my_cds_cluster has_circuit_breakers(): " << my_cds_cluster->has_circuit_breakers() << std::endl;
     std::cout << "AFTER aggregate_cluster has_circuit_breakers(): " << aggregate_cluster->has_circuit_breakers() << std::endl;
@@ -445,30 +445,30 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
 
   auto* cluster1_circuit_breakers_threshold_default = cluster1_circuit_breakers->add_thresholds();
   cluster1_circuit_breakers_threshold_default->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-  cluster1_circuit_breakers_threshold_default->mutable_max_connections()->set_value(1);
+  // cluster1_circuit_breakers_threshold_default->mutable_max_connections()->set_value(1);
   cluster1_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(1);
-  cluster1_circuit_breakers_threshold_default->mutable_max_requests()->set_value(1);
-  cluster1_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1);
+  // cluster1_circuit_breakers_threshold_default->mutable_max_requests()->set_value(1);
+  // cluster1_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1);
 
   auto* cluster1_circuit_breakers_threshold_high = cluster1_circuit_breakers->add_thresholds();
   cluster1_circuit_breakers_threshold_high->set_priority(envoy::config::core::v3::RoutingPriority::HIGH);
-  cluster1_circuit_breakers_threshold_high->mutable_max_connections()->set_value(1);
+  // cluster1_circuit_breakers_threshold_high->mutable_max_connections()->set_value(1);
   cluster1_circuit_breakers_threshold_high->mutable_max_pending_requests()->set_value(1);
-  cluster1_circuit_breakers_threshold_high->mutable_max_requests()->set_value(1);
-  cluster1_circuit_breakers_threshold_high->mutable_max_retries()->set_value(1);
+  // cluster1_circuit_breakers_threshold_high->mutable_max_requests()->set_value(1);
+  // cluster1_circuit_breakers_threshold_high->mutable_max_retries()->set_value(1);
 
   std::cout << "AFTER cluster1_ has_circuit_breakers(): " << cluster1_.has_circuit_breakers() << std::endl;
   std::cout << "AFTER cluster1_circuit_breakers thresholds_size(): " << cluster1_circuit_breakers->thresholds_size() << std::endl;
 
-  std::cout << "cluster1_ threshold default max_connections().value(): " << cluster1_circuit_breakers_threshold_default->max_connections().value() << std::endl;
+  // std::cout << "cluster1_ threshold default max_connections().value(): " << cluster1_circuit_breakers_threshold_default->max_connections().value() << std::endl;
   std::cout << "cluster1_ threshold default max_pending_requests().value(): " << cluster1_circuit_breakers_threshold_default->max_pending_requests().value() << std::endl;
-  std::cout << "cluster1_ threshold default max_requests().value(): " << cluster1_circuit_breakers_threshold_default->max_requests().value() << std::endl;
-  std::cout << "cluster1_ threshold default max_retries().value(): " << cluster1_circuit_breakers_threshold_default->max_retries().value() << std::endl;
+  // std::cout << "cluster1_ threshold default max_requests().value(): " << cluster1_circuit_breakers_threshold_default->max_requests().value() << std::endl;
+  // std::cout << "cluster1_ threshold default max_retries().value(): " << cluster1_circuit_breakers_threshold_default->max_retries().value() << std::endl;
 
-  std::cout << "cluster1_ threshold high max_connections().value(): " << cluster1_circuit_breakers_threshold_high->max_connections().value() << std::endl;
+  // std::cout << "cluster1_ threshold high max_connections().value(): " << cluster1_circuit_breakers_threshold_high->max_connections().value() << std::endl;
   std::cout << "cluster1_ threshold high max_pending_requests().value(): " << cluster1_circuit_breakers_threshold_high->max_pending_requests().value() << std::endl;
-  std::cout << "cluster1_ threshold high max_requests().value(): " << cluster1_circuit_breakers_threshold_high->max_requests().value() << std::endl;
-  std::cout << "cluster1_ threshold high max_retries().value(): " << cluster1_circuit_breakers_threshold_high->max_retries().value() << std::endl;
+  // std::cout << "cluster1_ threshold high max_requests().value(): " << cluster1_circuit_breakers_threshold_high->max_requests().value() << std::endl;
+  // std::cout << "cluster1_ threshold high max_retries().value(): " << cluster1_circuit_breakers_threshold_high->max_retries().value() << std::endl;
 
   // LOG OUTPUT :
   // ---------- 00 TEST START
@@ -506,26 +506,51 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
   // now we want to make the requests and check the circuit breakers behaviour...
 
   // check the initial circuit breaker stats on both "aggregate_cluster" and "cluster_1"
-  test_server_->waitForCounterEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open", 0);
-  test_server_->waitForCounterEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 0);
 
-  std::cout << "---------- 99 TEST END" << std::endl;
+  // test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open", 0);
+  // test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 0);
 
-  // codec_client_ = makeHttpConnection(lookupPort("http"));
+  std::cout << "BEFORE request/response1 aggregate_cluster rq_pending_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value() << std::endl;
+  std::cout << "BEFORE request/response1 aggregate_cluster remaining_pending: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value() << std::endl;
+  std::cout << "BEFORE request/response1 cluster_1 rq_pending_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value() << std::endl;
+  std::cout << "BEFORE request/response1 cluster_1 remaining_pending: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value() << std::endl;
 
-  // // send the first request (this should go via aggregate_cluster and to cluster_1)
-  // auto aggregate_cluster_response1 = codec_client_->makeRequestWithBody(Http::TestRequestHeaderMapImpl{{":method", "GET"},{":path", "/aggregatecluster"},{":scheme", "http"},{":authority", "host"}}, 1024);
+  EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value(), 0);
+  EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value(), 1);
+  EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value(), 0);
+  EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value(), 1);
+
+  codec_client_ = makeHttpConnection(lookupPort("http"));
+
+  // send the first request (this should go via aggregate_cluster to cluster_1)
+  auto aggregate_cluster_response1 = codec_client_->makeRequestWithBody(Http::TestRequestHeaderMapImpl{{":method", "GET"},{":path", "/aggregatecluster"},{":scheme", "http"},{":authority", "host"}}, 1024);
   
-  // waitForNextUpstreamRequest(FirstUpstreamIndex);
+  std::cout << "DURING request/response1 aggregate_cluster rq_pending_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value() << std::endl;
+  std::cout << "DURING request/response1 aggregate_cluster remaining_pending: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value() << std::endl;
+  std::cout << "DURING request/response1 cluster_1 rq_pending_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value() << std::endl;
+  std::cout << "DURING request/response1 cluster_1 remaining_pending: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value() << std::endl;
 
-  // // send the second request (this should go via aggregate_cluster and to cluster_1)
+  // TODO: ascertain if this is the correct method to use...
+  waitForNextUpstreamRequest(FirstUpstreamIndex);
+
+  std::cout << "AFTER request/response1 aggregate_cluster rq_pending_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value() << std::endl;
+  std::cout << "AFTER request/response1 aggregate_cluster remaining_pending: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value() << std::endl;
+  std::cout << "AFTER request/response1 cluster_1 rq_pending_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value() << std::endl;
+  std::cout << "AFTER request/response1 cluster_1 remaining_pending: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value() << std::endl;
+
+  // send the second request (this should go via aggregate_cluster to cluster_1)
   // auto aggregate_cluster_response2 = codec_client_->makeRequestWithBody(Http::TestRequestHeaderMapImpl{{":method", "GET"},{":path", "/aggregatecluster"},{":scheme", "http"},{":authority", "host"}}, 1024);
 
+  // std::cout << "AFTER request2 aggregate_cluster rq_pending_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value() << std::endl;
+  // std::cout << "AFTER request2 cluster_1 rq_pending_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value() << std::endl;
+
+  std::cout << "---------- 88 DID WE GET HERE?" << std::endl;
+
   // // aggregate_cluster circuit breaker should still be closed (not tripped)
-  // test_server_->waitForCounterEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open", 0);
+  // test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open", 0);
 
   // // cluster_1 circuit breaker should be open (tripped)
-  // test_server_->waitForCounterGe("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 1);
+  // test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 1);
 
   // // complete the first request
   // upstream_request_->encodeHeaders(default_response_headers_, true);
@@ -542,6 +567,12 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
 
   // // the second request should have failed due to the circuit breaker
   // EXPECT_EQ("503", aggregate_cluster_response2->headers().getStatusValue());
+
+
+  // "test requires explicit cleanupUpstreamAndDownstream"
+  cleanupUpstreamAndDownstream();
+
+  std::cout << "---------- 99 TEST END" << std::endl;
 }
 
 } // namespace
@@ -970,3 +1001,15 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
 // }
 
 // ----------
+
+
+
+
+// test/integration/server.h
+// IntegrationTestServer
+
+// Stats::GaugeSharedPtr gauge(const std::string& name) override {
+//   // When using the thread local store, only gauges() is thread safe. This also allows us
+//   // to test if a counter exists at all versus just defaulting to zero.
+//   return TestUtility::findGauge(statStore(), name);
+// }
