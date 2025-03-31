@@ -1,4 +1,5 @@
 #include "envoy/config/cluster/v3/cluster.pb.h"
+#include "envoy/extensions/clusters/aggregate/v3/cluster.pb.h"
 #include "envoy/grpc/status.h"
 #include "envoy/stats/scope.h"
 
@@ -313,10 +314,10 @@ TEST_P(AggregateIntegrationTest, PreviousPrioritiesRetryPredicate) {
 //   - cluster1
 //   - cluster2 (ideally we don't want this here (so we need to remove it WITHOUT affecting the other tests), and want to maybe add it later)
 
-// 1. setup two circuit breakers
+// 1. setup the two circuit breakers
 //    - one at the aggregate_cluster level
 //    - one at cluster1 level
-// and then we can confirm that the aggregate_cluster circuit breaker does not get used   [this WILL get used for "retries" because that mechanic lives there]
+// and then we can confirm that the aggregate_cluster circuit breaker does not get used [this WILL get used for "retries" because i believe that mechanic lives there]
 
 // 2. send one request through to /aggregate_cluster (and prevent it from completing)
 
@@ -331,123 +332,216 @@ TEST_P(AggregateIntegrationTest, PreviousPrioritiesRetryPredicate) {
 //    - this request should also fail (because the cluster1 circuit breaker is 1 (open))
 
 TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
-  std::cout << "---------- 01 CONFIG MODIFY START" << std::endl;
+  std::cout << "---------- 00 TEST START" << std::endl;
 
+  std::cout << "---------- 01 CONFIG MODIFY START" << std::endl;
+ 
+  // this is how we can modify the config (from the top of this file) before calling "initialize()"
   config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
+    
+    // we want to access the "static_resources" to modify the "aggregate_cluster"
+
+    // "my_cds_cluster" and "aggregate_cluster" are in "static_resources" > "clusters"
     auto* static_resources = bootstrap.mutable_static_resources();
 
-    auto* static_cluster_index_0 = static_resources->mutable_clusters(0);
-    std::cout << "static_cluster_index_0 name(): " << static_cluster_index_0->name() << std::endl;
+    // "my_cds_cluster" is at index 0 of the "static_resources" > "clusters"
+    // auto* my_cds_cluster = static_resources->mutable_clusters(0);
+    // std::cout << "my_cds_cluster name(): " << my_cds_cluster->name() << std::endl;
 
-    auto* static_cluster_index_1 = static_resources->mutable_clusters(1);
-    std::cout << "static_cluster_index_1 name(): " << static_cluster_index_1->name() << std::endl;
+    // "aggregate_cluster" is at index 1 of the "static_resources" > "clusters"
+    auto* aggregate_cluster = static_resources->mutable_clusters(1);
+    std::cout << "aggregate_cluster name(): " << aggregate_cluster->name() << std::endl;
 
-    // in the original config at the top:
+    // ---------
 
-    // - name: aggregate_cluster
-    // connect_timeout: 0.25s
-    // lb_policy: CLUSTER_PROVIDED
-    // cluster_type:
-    //   name: envoy.clusters.aggregate
-    //   typed_config:
-    //     "@type": type.googleapis.com/envoy.extensions.clusters.aggregate.v3.ClusterConfig
-    //     clusters:
-    //     - cluster_1
-    //     - cluster_2
+    // we want to reduce the "aggregate_cluster" "clusters" list down to just "cluster_1" (and therefore remove "cluster_2")
+    // so we can control our tests
+    // because "aggregate_cluster" is in "static_resources" not in "dynamic_resources" this is a bit more fiddly    
 
-    // but how do we remove cluster_2 from that list???
+    // get the "typed_config" of the "aggregate_cluster"
+    auto* aggregate_cluster_type = aggregate_cluster->mutable_cluster_type();
+    auto* aggregate_cluster_typed_config = aggregate_cluster_type->mutable_typed_config();
 
-    // auto* cluster_type = static_cluster_index_1->mutable_cluster_type();
+    // make a new ClusterConfig to parse the "typed_config" into
+    envoy::extensions::clusters::aggregate::v3::ClusterConfig temp_aggregate_cluster_typed_config;
 
-    std::cout << "BEFORE static_cluster_index_0 has_circuit_breakers(): " << static_cluster_index_0->has_circuit_breakers() << std::endl;
-    std::cout << "BEFORE static_cluster_index_1 has_circuit_breakers(): " << static_cluster_index_1->has_circuit_breakers() << std::endl;
+    // unpack the typed_config into cluster_config
+    aggregate_cluster_typed_config->UnpackTo(&temp_aggregate_cluster_typed_config);
+    
+    std::cout << "BEFORE temp_aggregate_cluster_typed_config.clusters_size(): " << temp_aggregate_cluster_typed_config.clusters_size() << std::endl;
+    for (int i = 0; i < temp_aggregate_cluster_typed_config.clusters_size(); i++) {
+      std::cout << "BEFORE temp_aggregate_cluster_typed_config clusters[" << i << "]: " << temp_aggregate_cluster_typed_config.clusters(i) << std::endl;
+    }
 
-    auto* static_cluster_index_1_circuit_breakers = static_cluster_index_1->mutable_circuit_breakers();
+    // clear the existing clusters list
+    temp_aggregate_cluster_typed_config.clear_clusters();
+    
+    // add only "cluster_1" back to the clusters list
+    temp_aggregate_cluster_typed_config.add_clusters("cluster_1");
 
-    std::cout << "BEFORE static_cluster_index_1 thresholds_size(): " << static_cluster_index_1_circuit_breakers->thresholds_size() << std::endl;
+    std::cout << "AFTER temp_aggregate_cluster_typed_config.clusters_size(): " << temp_aggregate_cluster_typed_config.clusters_size() << std::endl;
+    for (int i = 0; i < temp_aggregate_cluster_typed_config.clusters_size(); i++) {
+      std::cout << "AFTER temp_aggregate_cluster_typed_config clusters[" << i << "]: " << temp_aggregate_cluster_typed_config.clusters(i) << std::endl;
+    }
+    
+    // re-pack the adjusted config back
+    aggregate_cluster_typed_config->PackFrom(temp_aggregate_cluster_typed_config);
 
-    auto* static_cluster_index_1_circuit_breakers_threshold_default = static_cluster_index_1_circuit_breakers->add_thresholds();
-    static_cluster_index_1_circuit_breakers_threshold_default->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-    static_cluster_index_1_circuit_breakers_threshold_default->mutable_max_connections()->set_value(1);
-    static_cluster_index_1_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(1);
-    static_cluster_index_1_circuit_breakers_threshold_default->mutable_max_requests()->set_value(1);
-    static_cluster_index_1_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1);
+    // ---------
+  
+    // now we want to set the circuit breaker configuration on the aggregate cluster
 
-    auto* static_cluster_index_1_circuit_breakers_threshold_high = static_cluster_index_1_circuit_breakers->add_thresholds();
-    static_cluster_index_1_circuit_breakers_threshold_high->set_priority(envoy::config::core::v3::RoutingPriority::HIGH);
-    static_cluster_index_1_circuit_breakers_threshold_high->mutable_max_connections()->set_value(1);
-    static_cluster_index_1_circuit_breakers_threshold_high->mutable_max_pending_requests()->set_value(1);
-    static_cluster_index_1_circuit_breakers_threshold_high->mutable_max_requests()->set_value(1);
-    static_cluster_index_1_circuit_breakers_threshold_high->mutable_max_retries()->set_value(1);
+    // std::cout << "BEFORE my_cds_cluster has_circuit_breakers(): " << my_cds_cluster->has_circuit_breakers() << std::endl;
+    std::cout << "BEFORE aggregate_cluster has_circuit_breakers(): " << aggregate_cluster->has_circuit_breakers() << std::endl;
 
-    std::cout << "AFTER static_cluster_index_0 has_circuit_breakers(): " << static_cluster_index_0->has_circuit_breakers() << std::endl;
-    std::cout << "AFTER static_cluster_index_1 has_circuit_breakers(): " << static_cluster_index_1->has_circuit_breakers() << std::endl;
+    auto* aggregate_cluster_circuit_breakers = aggregate_cluster->mutable_circuit_breakers();
 
-    std::cout << "AFTER static_cluster_index_1 thresholds_size(): " << static_cluster_index_1_circuit_breakers->thresholds_size() << std::endl;
+    std::cout << "BEFORE aggregate_cluster thresholds_size(): " << aggregate_cluster_circuit_breakers->thresholds_size() << std::endl;
+
+    // set the aggregate_cluster circuit breakers
+    auto* aggregate_cluster_circuit_breakers_threshold_default = aggregate_cluster_circuit_breakers->add_thresholds();
+    aggregate_cluster_circuit_breakers_threshold_default->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
+    aggregate_cluster_circuit_breakers_threshold_default->mutable_max_connections()->set_value(1);
+    aggregate_cluster_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(1);
+    aggregate_cluster_circuit_breakers_threshold_default->mutable_max_requests()->set_value(1);
+    aggregate_cluster_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1);
+
+    auto* aggregate_cluster_circuit_breakers_threshold_high = aggregate_cluster_circuit_breakers->add_thresholds();
+    aggregate_cluster_circuit_breakers_threshold_high->set_priority(envoy::config::core::v3::RoutingPriority::HIGH);
+    aggregate_cluster_circuit_breakers_threshold_high->mutable_max_connections()->set_value(1);
+    aggregate_cluster_circuit_breakers_threshold_high->mutable_max_pending_requests()->set_value(1);
+    aggregate_cluster_circuit_breakers_threshold_high->mutable_max_requests()->set_value(1);
+    aggregate_cluster_circuit_breakers_threshold_high->mutable_max_retries()->set_value(1);
+
+    // std::cout << "AFTER my_cds_cluster has_circuit_breakers(): " << my_cds_cluster->has_circuit_breakers() << std::endl;
+    std::cout << "AFTER aggregate_cluster has_circuit_breakers(): " << aggregate_cluster->has_circuit_breakers() << std::endl;
+
+    std::cout << "AFTER aggregate_cluster thresholds_size(): " << aggregate_cluster_circuit_breakers->thresholds_size() << std::endl;
+
+    // ---------
   });
 
   std::cout << "---------- 02 CONFIG MODIFY FINISH" << std::endl;
 
   std::cout << "---------- 03 INITIALIZE START" << std::endl;
 
+  // ---------
+
+  // now call initialize (and that will add cluster_1 to the "dynamic_resources" > "clusters")
+
   initialize();
-  
+
+  // ---------
+
   std::cout << "---------- 04 INITIALIZE FINISH" << std::endl;
 
   std::cout << "cluster1_ name(): " << cluster1_.name() << std::endl;
 
   std::cout << "BEFORE cluster1_ has_circuit_breakers(): " << cluster1_.has_circuit_breakers() << std::endl;
 
-  auto* dynamic_cluster1_circuit_breakers = cluster1_.mutable_circuit_breakers();
+  auto* cluster1_circuit_breakers = cluster1_.mutable_circuit_breakers();
 
-  std::cout << "BEFORE dynamic_cluster1_circuit_breakers thresholds_size(): " << dynamic_cluster1_circuit_breakers->thresholds_size() << std::endl;
+  std::cout << "BEFORE cluster1_circuit_breakers thresholds_size(): " << cluster1_circuit_breakers->thresholds_size() << std::endl;
 
-  auto* dynamic_cluster1_circuit_breakers_threshold_default = dynamic_cluster1_circuit_breakers->add_thresholds();
-  dynamic_cluster1_circuit_breakers_threshold_default->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-  dynamic_cluster1_circuit_breakers_threshold_default->mutable_max_connections()->set_value(1);
-  dynamic_cluster1_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(1);
-  dynamic_cluster1_circuit_breakers_threshold_default->mutable_max_requests()->set_value(1);
-  dynamic_cluster1_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1);
+  auto* cluster1_circuit_breakers_threshold_default = cluster1_circuit_breakers->add_thresholds();
+  cluster1_circuit_breakers_threshold_default->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
+  cluster1_circuit_breakers_threshold_default->mutable_max_connections()->set_value(1);
+  cluster1_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(1);
+  cluster1_circuit_breakers_threshold_default->mutable_max_requests()->set_value(1);
+  cluster1_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1);
 
-  auto* dynamic_cluster1_circuit_breakers_threshold_high = dynamic_cluster1_circuit_breakers->add_thresholds();
-  dynamic_cluster1_circuit_breakers_threshold_high->set_priority(envoy::config::core::v3::RoutingPriority::HIGH);
-  dynamic_cluster1_circuit_breakers_threshold_high->mutable_max_connections()->set_value(1);
-  dynamic_cluster1_circuit_breakers_threshold_high->mutable_max_pending_requests()->set_value(1);
-  dynamic_cluster1_circuit_breakers_threshold_high->mutable_max_requests()->set_value(1);
-  dynamic_cluster1_circuit_breakers_threshold_high->mutable_max_retries()->set_value(1);
+  auto* cluster1_circuit_breakers_threshold_high = cluster1_circuit_breakers->add_thresholds();
+  cluster1_circuit_breakers_threshold_high->set_priority(envoy::config::core::v3::RoutingPriority::HIGH);
+  cluster1_circuit_breakers_threshold_high->mutable_max_connections()->set_value(1);
+  cluster1_circuit_breakers_threshold_high->mutable_max_pending_requests()->set_value(1);
+  cluster1_circuit_breakers_threshold_high->mutable_max_requests()->set_value(1);
+  cluster1_circuit_breakers_threshold_high->mutable_max_retries()->set_value(1);
 
   std::cout << "AFTER cluster1_ has_circuit_breakers(): " << cluster1_.has_circuit_breakers() << std::endl;
+  std::cout << "AFTER cluster1_circuit_breakers thresholds_size(): " << cluster1_circuit_breakers->thresholds_size() << std::endl;
 
-  std::cout << "AFTER dynamic_cluster1_circuit_breakers thresholds_size(): " << dynamic_cluster1_circuit_breakers->thresholds_size() << std::endl;
+  std::cout << "cluster1_ threshold default max_connections().value(): " << cluster1_circuit_breakers_threshold_default->max_connections().value() << std::endl;
+  std::cout << "cluster1_ threshold default max_pending_requests().value(): " << cluster1_circuit_breakers_threshold_default->max_pending_requests().value() << std::endl;
+  std::cout << "cluster1_ threshold default max_requests().value(): " << cluster1_circuit_breakers_threshold_default->max_requests().value() << std::endl;
+  std::cout << "cluster1_ threshold default max_retries().value(): " << cluster1_circuit_breakers_threshold_default->max_retries().value() << std::endl;
 
-  std::cout << "cluster1_ threshold default max_connections().value(): " << dynamic_cluster1_circuit_breakers_threshold_default->max_connections().value() << std::endl;
-  std::cout << "cluster1_ threshold default max_pending_requests().value(): " << dynamic_cluster1_circuit_breakers_threshold_default->max_pending_requests().value() << std::endl;
-  std::cout << "cluster1_ threshold default max_requests().value(): " << dynamic_cluster1_circuit_breakers_threshold_default->max_requests().value() << std::endl;
-  std::cout << "cluster1_ threshold default max_retries().value(): " << dynamic_cluster1_circuit_breakers_threshold_default->max_retries().value() << std::endl;
+  std::cout << "cluster1_ threshold high max_connections().value(): " << cluster1_circuit_breakers_threshold_high->max_connections().value() << std::endl;
+  std::cout << "cluster1_ threshold high max_pending_requests().value(): " << cluster1_circuit_breakers_threshold_high->max_pending_requests().value() << std::endl;
+  std::cout << "cluster1_ threshold high max_requests().value(): " << cluster1_circuit_breakers_threshold_high->max_requests().value() << std::endl;
+  std::cout << "cluster1_ threshold high max_retries().value(): " << cluster1_circuit_breakers_threshold_high->max_retries().value() << std::endl;
 
-  // log output:
-
+  // LOG OUTPUT :
+  // ---------- 00 TEST START
   // ---------- 01 CONFIG MODIFY START
   // ---------- 02 CONFIG MODIFY FINISH
   // ---------- 03 INITIALIZE START
-  // static_cluster_index_0 name(): my_cds_cluster
-  // static_cluster_index_1 name(): aggregate_cluster
-  // BEFORE static_cluster_index_0 has_circuit_breakers(): 0
-  // BEFORE static_cluster_index_1 has_circuit_breakers(): 0
-  // BEFORE static_cluster_index_1 thresholds_size(): 0
-  // AFTER static_cluster_index_0 has_circuit_breakers(): 0
-  // AFTER static_cluster_index_1 has_circuit_breakers(): 1
-  // AFTER static_cluster_index_1 thresholds_size(): 2
+  // aggregate_cluster name(): aggregate_cluster
+  // BEFORE temp_aggregate_cluster_typed_config.clusters_size(): 2
+  // BEFORE temp_aggregate_cluster_typed_config clusters[0]: cluster_1
+  // BEFORE temp_aggregate_cluster_typed_config clusters[1]: cluster_2
+  // AFTER temp_aggregate_cluster_typed_config.clusters_size(): 1
+  // AFTER temp_aggregate_cluster_typed_config clusters[0]: cluster_1
+  // BEFORE aggregate_cluster has_circuit_breakers(): 0
+  // BEFORE aggregate_cluster thresholds_size(): 0
+  // AFTER aggregate_cluster has_circuit_breakers(): 1
+  // AFTER aggregate_cluster thresholds_size(): 2
   // ---------- 04 INITIALIZE FINISH
   // cluster1_ name(): cluster_1
   // BEFORE cluster1_ has_circuit_breakers(): 0
-  // BEFORE dynamic_cluster1_circuit_breakers thresholds_size(): 0
+  // BEFORE cluster1_circuit_breakers thresholds_size(): 0
   // AFTER cluster1_ has_circuit_breakers(): 1
-  // AFTER dynamic_cluster1_circuit_breakers thresholds_size(): 2
+  // AFTER cluster1_circuit_breakers thresholds_size(): 2
   // cluster1_ threshold default max_connections().value(): 1
   // cluster1_ threshold default max_pending_requests().value(): 1
   // cluster1_ threshold default max_requests().value(): 1
   // cluster1_ threshold default max_retries().value(): 1
+  // cluster1_ threshold high max_connections().value(): 1
+  // cluster1_ threshold high max_pending_requests().value(): 1
+  // cluster1_ threshold high max_requests().value(): 1
+  // cluster1_ threshold high max_retries().value(): 1
+  // ---------- 99 TEST END
+
+  // ----------
+
+  // now we want to make the requests and check the circuit breakers behaviour...
+
+  // check the initial circuit breaker stats on both "aggregate_cluster" and "cluster_1"
+  test_server_->waitForCounterEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open", 0);
+  test_server_->waitForCounterEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 0);
+
+  std::cout << "---------- 99 TEST END" << std::endl;
+
+  // codec_client_ = makeHttpConnection(lookupPort("http"));
+
+  // // send the first request (this should go via aggregate_cluster and to cluster_1)
+  // auto aggregate_cluster_response1 = codec_client_->makeRequestWithBody(Http::TestRequestHeaderMapImpl{{":method", "GET"},{":path", "/aggregatecluster"},{":scheme", "http"},{":authority", "host"}}, 1024);
+  
+  // waitForNextUpstreamRequest(FirstUpstreamIndex);
+
+  // // send the second request (this should go via aggregate_cluster and to cluster_1)
+  // auto aggregate_cluster_response2 = codec_client_->makeRequestWithBody(Http::TestRequestHeaderMapImpl{{":method", "GET"},{":path", "/aggregatecluster"},{":scheme", "http"},{":authority", "host"}}, 1024);
+
+  // // aggregate_cluster circuit breaker should still be closed (not tripped)
+  // test_server_->waitForCounterEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open", 0);
+
+  // // cluster_1 circuit breaker should be open (tripped)
+  // test_server_->waitForCounterGe("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 1);
+
+  // // complete the first request
+  // upstream_request_->encodeHeaders(default_response_headers_, true);
+
+  // ASSERT_TRUE(aggregate_cluster_response1->waitForEndStream());
+  // EXPECT_TRUE(aggregate_cluster_response1->complete());
+  
+  // // the first request should have succeeded
+  // EXPECT_EQ("200", aggregate_cluster_response1->headers().getStatusValue());
+
+  // // complete the second request
+  // ASSERT_TRUE(aggregate_cluster_response2->waitForEndStream());
+  // EXPECT_TRUE(aggregate_cluster_response2->complete());
+
+  // // the second request should have failed due to the circuit breaker
+  // EXPECT_EQ("503", aggregate_cluster_response2->headers().getStatusValue());
 }
 
 } // namespace
@@ -720,3 +814,159 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
 // // bazel-bin/external/envoy_api/envoy/config/cluster/v3/circuit_breaker.pb.h 
 
 // // TOO MUCH TO PASTE HERE...
+
+
+// ----------
+
+// LIST OF MORE THINGS/EXAMPLES I FOUND THAT I THINK MAY BE USEFUL :
+
+// codec_client_ = makeHttpConnection(lookupPort("http"));
+
+// auto response = codec_client_->makeRequestWithBody(
+//                                     Http::TestRequestHeaderMapImpl{
+//                                       {":method", "GET"},
+//                                       {":path", "/aggregatecluster"},
+//                                       {":scheme", "http"},
+//                                       {":authority", "host"},
+//                                       {"x-forwarded-for", "10.0.0.1"},
+//                                       {"x-envoy-retry-on", "5xx"}
+//                                     }
+//                               );
+
+// auto response = codec_client_->makeRequestWithBody(default_request_headers_, 1024);
+
+// ASSERT_TRUE(response->waitForEndStream());
+
+// ----------
+
+// config_helper_.addRuntimeOverride("circuit_breakers.cluster_0.default.max_requests", "0");
+// config_helper_.addRuntimeOverride("circuit_breakers.cluster_0.default.max_retries", "1024");
+
+// ----------
+
+// test_server_->waitForGaugeEq("cluster.cluster_0.upstream_rq_active", 0);
+// test_server_->waitForGaugeEq("cluster.cluster_0.upstream_rq_pending_active", 0);
+
+// EXPECT_EQ(test_server_->counter("cluster.cluster_0.upstream_rq_pending_overflow")->value(), 1);
+
+// ----------
+
+// config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
+//   // BOOTSTRAP METHODS THAT MIGHT BE USEFUL
+//   bootstrap.mutable_static_resources()->add_clusters();
+// });
+
+// ----------
+
+// CODEC CLIENT "codec_client_"
+// "codec_client_" is a HTTP codec client used during integration testing.
+
+// "The codec client is part of Envoy’s HTTP handling architecture, specifically responsible for managing outbound HTTP connections. 
+// It abstracts the differences between various HTTP versions (HTTP/1.1, HTTP/2, HTTP/3) and provides a unified interface for sending requests and receiving responses."
+// - Encodes HTTP requests and sends them to upstream servers.
+// - Decodes HTTP responses from upstream servers.
+// - Manages the lifecycle of an HTTP connection (e.g., connection establishment, keep-alive, connection pooling).
+// - Provides an interface for Envoy’s upstream HTTP filters and network components.
+
+// test/integration/http_integration.h
+// IntegrationCodecClient
+
+// IntegrationCodecClientPtr makeHttpConnection(uint32_t port);
+// IntegrationCodecClientPtr makeHttpConnection(Network::ClientConnectionPtr&& conn);
+
+// IntegrationStreamDecoderPtr makeHeaderOnlyRequest(const Http::RequestHeaderMap& headers);
+
+// IntegrationStreamDecoderPtr makeRequestWithBody(const Http::RequestHeaderMap& headers, uint64_t body_size, bool end_stream = true);
+// IntegrationStreamDecoderPtr makeRequestWithBody(const Http::RequestHeaderMap& headers, const std::string& body, bool end_stream = true);
+
+// test/integration/http_integration.cc
+// IntegrationCodecClient
+
+// makeHttpConnections (variant 1)
+// codec_client_->makeHttpConnection(...)
+// IntegrationCodecClientPtr HttpIntegrationTest::makeHttpConnection(uint32_t port) {
+//   return makeHttpConnection(makeClientConnection(port));
+// }
+
+// makeHttpConnections (variant 2)
+// codec_client_->makeHttpConnection(...)
+// IntegrationCodecClientPtr HttpIntegrationTest::makeHttpConnection(Network::ClientConnectionPtr&& conn) {
+//   auto codec = makeRawHttpConnection(std::move(conn), absl::nullopt);
+//   EXPECT_TRUE(codec->connected()) << codec->connection()->transportFailureReason();
+//   return codec;
+// }
+
+// makeHeaderOnlyRequest
+// codec_client_->makeHeaderOnlyRequest(...)
+// IntegrationStreamDecoderPtr IntegrationCodecClient::makeHeaderOnlyRequest(const Http::RequestHeaderMap& headers) {
+//   auto response = std::make_unique<IntegrationStreamDecoder>(dispatcher_);
+//   Http::RequestEncoder& encoder = newStream(*response);
+//   encoder.getStream().addCallbacks(*response);
+//   encoder.encodeHeaders(headers, true).IgnoreError();
+//   flushWrite();
+//   return response;
+// }
+
+// makeRequestWithBody (variant 1)
+// codec_client_->makeRequestWithBody(...)
+// IntegrationStreamDecoderPtr IntegrationCodecClient::makeRequestWithBody(const Http::RequestHeaderMap& headers, uint64_t body_size, bool end_stream) {
+//   return makeRequestWithBody(headers, std::string(body_size, 'a'), end_stream);
+// }
+
+// makeRequestWithBody (variant 2)
+// codec_client_->makeRequestWithBody(...)
+// IntegrationStreamDecoderPtr IntegrationCodecClient::makeRequestWithBody(const Http::RequestHeaderMap& headers, const std::string& body, bool end_stream) {
+//   auto response = std::make_unique<IntegrationStreamDecoder>(dispatcher_);
+//   Http::RequestEncoder& encoder = newStream(*response);
+//   encoder.getStream().addCallbacks(*response);
+//   encoder.encodeHeaders(headers, false).IgnoreError();
+//   Buffer::OwnedImpl data(body);
+//   encoder.encodeData(data, end_stream);
+//   flushWrite();
+//   return response;
+// }
+
+// ----------
+
+// "A stream decoder is responsible for processing incoming data in a streaming fashion. 
+// Specifically, it is part of the HTTP processing pipeline and is used 
+// to decode (interpret and process) HTTP requests or responses as they are received."
+
+// "A stream decoder in Envoy is responsible for taking raw bytes from a network connection 
+// and transforming them into structured protocol-specific messages or events that the rest of the proxy can understand and process."
+
+// test/integration/integration_stream_decoder.h
+// IntegrationStreamDecoder
+
+// Wait for the end of stream on the next upstream stream on any of the provided fake upstreams.
+// Sets fake_upstream_connection_ to the connection and upstream_request_ to stream.
+// In cases where the upstream that will receive the request is not deterministic, a second
+// upstream index may be provided, in which case both upstreams will be checked for requests.
+// absl::optional<uint64_t> waitForNextUpstreamRequest(const std::vector<uint64_t>& upstream_indices,std::chrono::milliseconds connection_wait_timeout = TestUtility::DefaultTimeout);
+// void waitForNextUpstreamRequest(uint64_t upstream_index = 0, std::chrono::milliseconds connection_wait_timeout = TestUtility::DefaultTimeout);
+// waitForEndStream(std::chrono::milliseconds timeout = TestUtility::DefaultTimeout);
+
+// test/integration/integration_stream_decoder.cc
+// IntegrationStreamDecoder
+
+// AssertionResult IntegrationStreamDecoder::waitForEndStream(std::chrono::milliseconds timeout) {
+//   bool timer_fired = false;
+//   while (!saw_end_stream_) {
+//     Event::TimerPtr timer(dispatcher_.createTimer([this, &timer_fired]() -> void {
+//       timer_fired = true;
+//       dispatcher_.exit();
+//     }));
+//     timer->enableTimer(timeout);
+//     waiting_for_end_stream_ = true;
+//     dispatcher_.run(Event::Dispatcher::RunType::Block);
+//     if (!saw_end_stream_) {
+//       ENVOY_LOG_MISC(warn, "non-end stream event.");
+//     }
+//     if (timer_fired) {
+//       return AssertionFailure() << "Timed out waiting for end stream\n";
+//     }
+//   }
+//   return AssertionSuccess();
+// }
+
+// ----------
