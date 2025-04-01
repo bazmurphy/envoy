@@ -390,7 +390,7 @@ IntegrationStreamDecoderPtr IntegrationCodecClient::makeRequestWithBody(const Ht
 // IntegrationStreamDecoder
 
 // Wait for the end of stream on the next upstream stream on any of the provided fake upstreams.
-// Sets fake_upstream_connection_ to the connection and upstream_request_ to stream.
+// Sets fake_upstream_connection_ to the connection, and upstream_request_ to stream.
 // In cases where the upstream that will receive the request is not deterministic, a second
 // upstream index may be provided, in which case both upstreams will be checked for requests.
 absl::optional<uint64_t> waitForNextUpstreamRequest(const std::vector<uint64_t>& upstream_indices,std::chrono::milliseconds connection_wait_timeout = TestUtility::DefaultTimeout);
