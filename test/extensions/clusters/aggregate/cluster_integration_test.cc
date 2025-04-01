@@ -546,9 +546,16 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
   // i think this waits for the request to reach the upstream
   waitForNextUpstreamRequest(FirstUpstreamIndex);
 
-  // std::cout << "DURING request/response1 aggregate_cluster rq_pending_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value() << std::endl;
-  // std::cout << "DURING request/response1 aggregate_cluster remaining_pending: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value() << std::endl;
-  // std::cout << "DURING request/response1 cluster_1 rq_pending_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value() << std::endl;
+  // aggregate_cluster
+  std::cout << "DURING request/response1 aggregate_cluster rq_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_open")->value() << std::endl;
+  std::cout << "DURING request/response1 aggregate_cluster remaining_rq: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_rq")->value() << std::endl;
+  std::cout << "DURING request/response1 aggregate_cluster rq_pending_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value() << std::endl;
+  std::cout << "DURING request/response1 aggregate_cluster remaining_pending: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value() << std::endl;
+
+  // cluster_1
+  std::cout << "DURING request/response1 cluster_1 rq_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_open")->value() << std::endl;
+  // std::cout << "DURING request/response1 cluster_1 remaining_rq: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_rq")->value() << std::endl;
+  std::cout << "DURING request/response1 cluster_1 rq_pending_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value() << std::endl;
   // std::cout << "DURING request/response1 cluster_1 remaining_pending: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value() << std::endl;
 
   // test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open", 0);
