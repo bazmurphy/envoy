@@ -409,8 +409,7 @@ absl::optional<uint64_t> HttpIntegrationTest::waitForNextUpstreamRequest(const s
                                                           fake_upstream_connection_);
   }
   // Wait for the next stream on the upstream connection.
-  AssertionResult result =
-      fake_upstream_connection_->waitForNewStream(*dispatcher_, upstream_request_);
+  AssertionResult result = fake_upstream_connection_->waitForNewStream(*dispatcher_, upstream_request_);
   RELEASE_ASSERT(result, result.message());
   // Wait for the stream to be completely received.
   result = upstream_request_->waitForEndStream(*dispatcher_);
