@@ -429,66 +429,6 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
     std::cout << "AFTER aggregate_cluster thresholds_size(): " << aggregate_cluster_circuit_breakers->thresholds_size() << std::endl;
 
     // ---------
-
-    // [ RUN      ] IpVersions/AggregateIntegrationTest.CircuitBreakerTest/0
-    // ---------- 00 TEST START
-    // ---------- 01 CONFIG MODIFY START
-    // ---------- 02 CONFIG MODIFY FINISH
-    // ---------- 03 INITIALIZE START
-    // aggregate_cluster name(): aggregate_cluster
-    // BEFORE temp_aggregate_cluster_typed_config.clusters_size(): 2
-    // BEFORE temp_aggregate_cluster_typed_config clusters[0]: cluster_1
-    // BEFORE temp_aggregate_cluster_typed_config clusters[1]: cluster_2
-    // AFTER temp_aggregate_cluster_typed_config.clusters_size(): 1
-    // AFTER temp_aggregate_cluster_typed_config clusters[0]: cluster_1
-    // BEFORE aggregate_cluster has_circuit_breakers(): 0
-    // BEFORE aggregate_cluster thresholds_size(): 0
-    // AFTER aggregate_cluster has_circuit_breakers(): 1
-    // AFTER aggregate_cluster thresholds_size(): 2
-    // ---------- 04 INITIALIZE FINISH
-    // cluster1_ name(): cluster_1
-    // BEFORE cluster1_ has_circuit_breakers(): 0
-    // BEFORE cluster1_circuit_breakers thresholds_size(): 0
-    // AFTER cluster1_ has_circuit_breakers(): 1
-    // AFTER cluster1_circuit_breakers thresholds_size(): 2
-    // cluster1_ threshold default max_pending_requests().value(): 1
-    // cluster1_ threshold default max_requests().value(): 1
-    // cluster1_ threshold high max_pending_requests().value(): 1
-    // cluster1_ threshold high max_requests().value(): 1
-    // [2025-04-01 10:11:02.058][12][critical][assert] [source/common/http/http1/codec_impl.cc:1486] assert failure: !pending_response_.has_value().
-    // [2025-04-01 10:11:02.058][12][error][envoy_bug] [./source/common/common/assert.h:38] stacktrace for envoy bug
-    // [2025-04-01 10:11:02.073][12][error][envoy_bug] [./source/common/common/assert.h:43] #0 Envoy::Http::Http1::ClientConnectionImpl::newStream() [0x567f66f]
-    // [2025-04-01 10:11:02.086][12][error][envoy_bug] [./source/common/common/assert.h:43] #1 Envoy::Http::CodecClient::newStream() [0x56568ee]
-    // [2025-04-01 10:11:02.100][12][error][envoy_bug] [./source/common/common/assert.h:43] #2 Envoy::IntegrationCodecClient::makeRequestWithBody() [0x3047804]
-    // [2025-04-01 10:11:02.113][12][error][envoy_bug] [./source/common/common/assert.h:43] #3 Envoy::IntegrationCodecClient::makeRequestWithBody() [0x3047702]
-    // [2025-04-01 10:11:02.126][12][error][envoy_bug] [./source/common/common/assert.h:43] #4 Envoy::(anonymous namespace)::AggregateIntegrationTest_CircuitBreakerTest_Test::TestBody() [0x2b547af]
-    // [2025-04-01 10:11:02.139][12][error][envoy_bug] [./source/common/common/assert.h:43] #5 testing::internal::HandleSehExceptionsInMethodIfSupported<>() [0x741dbcb]
-    // [2025-04-01 10:11:02.152][12][error][envoy_bug] [./source/common/common/assert.h:43] #6 testing::internal::HandleExceptionsInMethodIfSupported<>() [0x740d77d]
-    // [2025-04-01 10:11:02.165][12][error][envoy_bug] [./source/common/common/assert.h:43] #7 testing::Test::Run() [0x73f5ff3]
-    // [2025-04-01 10:11:02.178][12][error][envoy_bug] [./source/common/common/assert.h:43] #8 testing::TestInfo::Run() [0x73f6bba]
-    // [2025-04-01 10:11:02.191][12][error][envoy_bug] [./source/common/common/assert.h:43] #9 testing::TestSuite::Run() [0x73f740b]
-    // [2025-04-01 10:11:02.204][12][error][envoy_bug] [./source/common/common/assert.h:43] #10 testing::internal::UnitTestImpl::RunAllTests() [0x7405e88]
-    // [2025-04-01 10:11:02.217][12][error][envoy_bug] [./source/common/common/assert.h:43] #11 testing::internal::HandleSehExceptionsInMethodIfSupported<>() [0x742036b]
-    // [2025-04-01 10:11:02.230][12][error][envoy_bug] [./source/common/common/assert.h:43] #12 testing::internal::HandleExceptionsInMethodIfSupported<>() [0x740fad3]
-    // [2025-04-01 10:11:02.243][12][error][envoy_bug] [./source/common/common/assert.h:43] #13 testing::UnitTest::Run() [0x74059c8]
-    // [2025-04-01 10:11:02.256][12][error][envoy_bug] [./source/common/common/assert.h:43] #14 RUN_ALL_TESTS() [0x5f0e341]
-    // [2025-04-01 10:11:02.269][12][error][envoy_bug] [./source/common/common/assert.h:43] #15 Envoy::TestRunner::runTests() [0x5f0d7ea]
-    // [2025-04-01 10:11:02.269][12][critical][backtrace] [./source/server/backtrace.h:129] Caught Aborted, suspect faulting address 0x103d0000000c
-    // [2025-04-01 10:11:02.269][12][critical][backtrace] [./source/server/backtrace.h:113] Backtrace (use tools/stack_decode.py to get line numbers):
-    // [2025-04-01 10:11:02.269][12][critical][backtrace] [./source/server/backtrace.h:114] Envoy version: 0/1.34.0-dev/test/DEBUG/BoringSSL
-    // [2025-04-01 10:11:02.282][12][critical][backtrace] [./source/server/backtrace.h:121] #0: Envoy::SignalAction::sigHandler() [0x646690c]
-    // [2025-04-01 10:11:02.282][12][critical][backtrace] [./source/server/backtrace.h:123] #1: [0x7292ff842520]
-    // ================================================================================
-    // INFO: Found 1 test target...
-    // Target //test/extensions/clusters/aggregate:cluster_integration_test up-to-date:
-    //   bazel-bin/test/extensions/clusters/aggregate/cluster_integration_test
-    // INFO: Elapsed time: 67.461s, Critical Path: 67.06s
-    // INFO: 4 processes: 4 linux-sandbox.
-    // INFO: Build completed, 1 test FAILED, 4 total actions
-    // //test/extensions/clusters/aggregate:cluster_integration_test            FAILED in 6.1s
-    //   /home/baz.murphy/.cache/bazel/_bazel_baz.murphy/7fcf1edc087d667522e3815b5db406ee/execroot/envoy/bazel-out/k8-fastbuild/testlogs/test/extensions/clusters/aggregate/cluster_integration_test/test.log
-
-    // Executed 1 out of 1 test: 1 fails locally.
   });
 
   std::cout << "---------- 02 CONFIG MODIFY FINISH" << std::endl;
@@ -623,7 +563,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
 
   std::cout << "---------- 99 TEST END" << std::endl;
 
-  // LOG OUTPUT:
+  // [ RUN      ] IpVersions/AggregateIntegrationTest.CircuitBreakerTest/0
   // ---------- 00 TEST START
   // ---------- 01 CONFIG MODIFY START
   // ---------- 02 CONFIG MODIFY FINISH
@@ -645,28 +585,43 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
   // AFTER cluster1_ has_circuit_breakers(): 1
   // AFTER cluster1_circuit_breakers thresholds_size(): 2
   // cluster1_ threshold default max_pending_requests().value(): 1
+  // cluster1_ threshold default max_requests().value(): 1
   // cluster1_ threshold high max_pending_requests().value(): 1
-  // BEFORE request/response1 aggregate_cluster rq_pending_open: 0
-  // BEFORE request/response1 cluster_1 rq_pending_open: 0
-  // DURING request/response1 aggregate_cluster rq_pending_open: 0
-  // DURING request/response1 cluster_1 rq_pending_open: 0
-  // test/extensions/clusters/aggregate/cluster_integration_test.cc:503: Failure
-  // Expected equality of these values:
-  //   test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value()
-  //     Which is: 0
-  //   1
-  // Stack trace:
-  //   0x2b55709: Envoy::(anonymous namespace)::AggregateIntegrationTest_CircuitBreakerTest_Test::TestBody()
-  //   0x741df4b: testing::internal::HandleSehExceptionsInMethodIfSupported<>()
-  //   0x740dafd: testing::internal::HandleExceptionsInMethodIfSupported<>()
-  //   0x73f6373: testing::Test::Run()
-  //   0x73f6f3a: testing::TestInfo::Run()
-  // ... Google Test internal frames ...
+  // cluster1_ threshold high max_requests().value(): 1
+  // [2025-04-01 10:11:02.058][12][critical][assert] [source/common/http/http1/codec_impl.cc:1486] assert failure: !pending_response_.has_value().
+  // [2025-04-01 10:11:02.058][12][error][envoy_bug] [./source/common/common/assert.h:38] stacktrace for envoy bug
+  // [2025-04-01 10:11:02.073][12][error][envoy_bug] [./source/common/common/assert.h:43] #0 Envoy::Http::Http1::ClientConnectionImpl::newStream() [0x567f66f]
+  // [2025-04-01 10:11:02.086][12][error][envoy_bug] [./source/common/common/assert.h:43] #1 Envoy::Http::CodecClient::newStream() [0x56568ee]
+  // [2025-04-01 10:11:02.100][12][error][envoy_bug] [./source/common/common/assert.h:43] #2 Envoy::IntegrationCodecClient::makeRequestWithBody() [0x3047804]
+  // [2025-04-01 10:11:02.113][12][error][envoy_bug] [./source/common/common/assert.h:43] #3 Envoy::IntegrationCodecClient::makeRequestWithBody() [0x3047702]
+  // [2025-04-01 10:11:02.126][12][error][envoy_bug] [./source/common/common/assert.h:43] #4 Envoy::(anonymous namespace)::AggregateIntegrationTest_CircuitBreakerTest_Test::TestBody() [0x2b547af]
+  // [2025-04-01 10:11:02.139][12][error][envoy_bug] [./source/common/common/assert.h:43] #5 testing::internal::HandleSehExceptionsInMethodIfSupported<>() [0x741dbcb]
+  // [2025-04-01 10:11:02.152][12][error][envoy_bug] [./source/common/common/assert.h:43] #6 testing::internal::HandleExceptionsInMethodIfSupported<>() [0x740d77d]
+  // [2025-04-01 10:11:02.165][12][error][envoy_bug] [./source/common/common/assert.h:43] #7 testing::Test::Run() [0x73f5ff3]
+  // [2025-04-01 10:11:02.178][12][error][envoy_bug] [./source/common/common/assert.h:43] #8 testing::TestInfo::Run() [0x73f6bba]
+  // [2025-04-01 10:11:02.191][12][error][envoy_bug] [./source/common/common/assert.h:43] #9 testing::TestSuite::Run() [0x73f740b]
+  // [2025-04-01 10:11:02.204][12][error][envoy_bug] [./source/common/common/assert.h:43] #10 testing::internal::UnitTestImpl::RunAllTests() [0x7405e88]
+  // [2025-04-01 10:11:02.217][12][error][envoy_bug] [./source/common/common/assert.h:43] #11 testing::internal::HandleSehExceptionsInMethodIfSupported<>() [0x742036b]
+  // [2025-04-01 10:11:02.230][12][error][envoy_bug] [./source/common/common/assert.h:43] #12 testing::internal::HandleExceptionsInMethodIfSupported<>() [0x740fad3]
+  // [2025-04-01 10:11:02.243][12][error][envoy_bug] [./source/common/common/assert.h:43] #13 testing::UnitTest::Run() [0x74059c8]
+  // [2025-04-01 10:11:02.256][12][error][envoy_bug] [./source/common/common/assert.h:43] #14 RUN_ALL_TESTS() [0x5f0e341]
+  // [2025-04-01 10:11:02.269][12][error][envoy_bug] [./source/common/common/assert.h:43] #15 Envoy::TestRunner::runTests() [0x5f0d7ea]
+  // [2025-04-01 10:11:02.269][12][critical][backtrace] [./source/server/backtrace.h:129] Caught Aborted, suspect faulting address 0x103d0000000c
+  // [2025-04-01 10:11:02.269][12][critical][backtrace] [./source/server/backtrace.h:113] Backtrace (use tools/stack_decode.py to get line numbers):
+  // [2025-04-01 10:11:02.269][12][critical][backtrace] [./source/server/backtrace.h:114] Envoy version: 0/1.34.0-dev/test/DEBUG/BoringSSL
+  // [2025-04-01 10:11:02.282][12][critical][backtrace] [./source/server/backtrace.h:121] #0: Envoy::SignalAction::sigHandler() [0x646690c]
+  // [2025-04-01 10:11:02.282][12][critical][backtrace] [./source/server/backtrace.h:123] #1: [0x7292ff842520]
+  // ================================================================================
+  // INFO: Found 1 test target...
+  // Target //test/extensions/clusters/aggregate:cluster_integration_test up-to-date:
+  //   bazel-bin/test/extensions/clusters/aggregate/cluster_integration_test
+  // INFO: Elapsed time: 67.461s, Critical Path: 67.06s
+  // INFO: 4 processes: 4 linux-sandbox.
+  // INFO: Build completed, 1 test FAILED, 4 total actions
+  // //test/extensions/clusters/aggregate:cluster_integration_test            FAILED in 6.1s
+  //   /home/baz.murphy/.cache/bazel/_bazel_baz.murphy/7fcf1edc087d667522e3815b5db406ee/execroot/envoy/bazel-out/k8-fastbuild/testlogs/test/extensions/clusters/aggregate/cluster_integration_test/test.log
 
-  // AFTER request/response1 aggregate_cluster rq_pending_open: 0
-  // AFTER request/response1 cluster_1 rq_pending_open: 0
-  // ---------- 98 DID WE GET HERE?
-  // ---------- 99 TEST END
+  // Executed 1 out of 1 test: 1 fails locally.
 }
 
 } // namespace
