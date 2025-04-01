@@ -102,7 +102,7 @@ void IntegrationCodecClient::flushWrite() {
   // NOTE: We should run blocking until all the body data is flushed.
 }
 
-IntegrationStreamDecoderPtr 
+IntegrationStreamDecoderPtr
 IntegrationCodecClient::makeHeaderOnlyRequest(const Http::RequestHeaderMap& headers) {
   auto response = std::make_unique<IntegrationStreamDecoder>(dispatcher_);
   Http::RequestEncoder& encoder = newStream(*response);
