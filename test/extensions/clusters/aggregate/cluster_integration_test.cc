@@ -499,10 +499,10 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
   // std::cout << "BEFORE request/response1 cluster_1 rq_pending_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value() << std::endl;
   // std::cout << "BEFORE request/response1 cluster_1 remaining_pending: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value() << std::endl;
 
-  codec_client_ = makeHttpConnection(lookupPort("http"));
+  Envoy::IntegrationCodecClientPtr codec_client_1 = makeHttpConnection(lookupPort("http"));
 
   // send the first request (this should go via "aggregate_cluster" through to "cluster_1")
-  auto aggregate_cluster_response1 = codec_client_->makeRequestWithBody(
+  auto aggregate_cluster_response1 = codec_client_1->makeRequestWithBody(
     Http::TestRequestHeaderMapImpl{
       {":method", "GET"},{":path", "/aggregatecluster"},{":scheme", "http"},{":authority", "host"}}, 
       1024
@@ -530,12 +530,19 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
   // std::cout << "AFTER request/response1 cluster_1 rq_pending_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value() << std::endl;
   // std::cout << "AFTER request/response1 cluster_1 remaining_pending: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value() << std::endl;
 
+  Envoy::IntegrationCodecClientPtr codec_client_2 = makeHttpConnection(lookupPort("http"));
+
   // send the second request (this should also go via "aggregate_cluster" through to "cluster_1")
-  auto aggregate_cluster_response2 = codec_client_->makeRequestWithBody(
+  auto aggregate_cluster_response2 = codec_client_2->makeRequestWithBody(
     Http::TestRequestHeaderMapImpl{
       {":method", "GET"},{":path", "/aggregatecluster"},{":scheme", "http"},{":authority", "host"}}, 
       1024
     );
+
+  // it DOES print
+  std::cout << "---------- 98 DID WE GET HERE? 1 " << std::endl;
+
+  // but then this assertion fails:
 
   // the second response should fail (fast?) with 503
   ASSERT_TRUE(aggregate_cluster_response2->waitForEndStream());
@@ -551,8 +558,6 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
   ASSERT_TRUE(aggregate_cluster_response1->waitForEndStream());
   // the first response should succeed with 200
   EXPECT_EQ("200", aggregate_cluster_response1->headers().getStatusValue());
-
-  std::cout << "---------- 98 DID WE GET HERE?" << std::endl;
 
   // check the circuit breaker stats again:
   EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value(), 0);

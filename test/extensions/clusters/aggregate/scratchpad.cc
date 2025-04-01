@@ -401,7 +401,6 @@ waitForEndStream(std::chrono::milliseconds timeout = TestUtility::DefaultTimeout
 // test/integration/integration_stream_decoder.cc
 // IntegrationStreamDecoder
 
-
 absl::optional<uint64_t> HttpIntegrationTest::waitForNextUpstreamRequest(const std::vector<uint64_t>& upstream_indices, std::chrono::milliseconds connection_wait_timeout) {
   absl::optional<uint64_t> upstream_with_request;
   // If there is no upstream connection, wait for it to be established.
@@ -456,3 +455,269 @@ Stats::GaugeSharedPtr gauge(const std::string& name) override {
   // to test if a counter exists at all versus just defaulting to zero.
   return TestUtility::findGauge(statStore(), name);
 }
+
+
+// ---------
+
+IntegrationStreamDecoderPtr IntegrationCodecClient::makeRequestWithBody(const Http::RequestHeaderMap& headers, const std::string& body, bool end_stream) {
+	auto response = std::make_unique<IntegrationStreamDecoder>(dispatcher_);
+	Http::RequestEncoder& encoder = newStream(*response); // THIS IS CALLED (SEE BELOW)
+	encoder.getStream().addCallbacks(*response);
+	encoder.encodeHeaders(headers, false).IgnoreError();
+	Buffer::OwnedImpl data(body);
+	encoder.encodeData(data, end_stream);
+	flushWrite();
+	return response;
+  }
+
+// CodecClient
+
+// source/common/http/codec_client.h
+
+/**
+ * Create a new stream. Note: The CodecClient will NOT buffer multiple requests for HTTP1
+ * connections. Thus, calling newStream() before the previous request has been fully encoded
+ * is an error. Pipelining is supported however.
+ * @param response_decoder supplies the decoder to use for response callbacks.
+ * @return StreamEncoder& the encoder to use for encoding the request.
+ */
+RequestEncoder& newStream(ResponseDecoder& response_decoder);
+
+// source/common/http/codec_client.cc
+
+RequestEncoder& CodecClient::newStream(ResponseDecoder& response_decoder) {
+	ActiveRequestPtr request(new ActiveRequest(*this, response_decoder));
+	request->setEncoder(codec_->newStream(*request));
+	LinkedList::moveIntoList(std::move(request), active_requests_);
+  
+	auto upstream_info = connection_->streamInfo().upstreamInfo();
+	upstream_info->setUpstreamNumStreams(upstream_info->upstreamNumStreams() + 1);
+  
+	disableIdleTimer();
+	return *active_requests_.front();
+  }
+
+// "codec_" is a protected: member variable in the Envoy::Http::CodecClient class
+// ClientConnectionPtr codec_;
+
+// envoy/http/codec.h
+
+// using ClientConnectionPtr = std::unique_ptr<ClientConnection>;
+
+// ClientConnection 
+/**
+ * A client side HTTP connection.
+ */
+class ClientConnection : public virtual Connection {
+	public:
+	  /**
+	   * Create a new outgoing request stream.
+	   * @param response_decoder supplies the decoder callbacks to fire response events into.
+	   * @return RequestEncoder& supplies the encoder to write the request into.
+	   */
+	  virtual RequestEncoder& newStream(ResponseDecoder& response_decoder) PURE;
+	};
+
+// but this is just an interface, we can see in the stack trace is it related to the http1 implementation
+
+// find the header:
+
+// source/common/http/http1/codec_impl.h
+
+/**
+ * Implementation of Http::ClientConnection for HTTP/1.1.
+ */
+class ClientConnectionImpl : public ClientConnection, public ConnectionImpl {...}
+
+// which has this "public:" method
+
+// Http::ClientConnection
+RequestEncoder& newStream(ResponseDecoder& response_decoder) override;
+
+// find the implementation: 
+
+// source/common/http/http1/codec_impl.cc
+
+RequestEncoder& ClientConnectionImpl::newStream(ResponseDecoder& response_decoder) {
+	// If reads were disabled due to flow control, we expect reads to always be enabled again before
+	// reusing this connection. This is done when the response is received.
+	ASSERT(connection_.readEnabled());
+  
+	ASSERT(!pending_response_.has_value());
+	ASSERT(pending_response_done_);
+	pending_response_.emplace(*this, std::move(bytes_meter_before_stream_), &response_decoder);
+	pending_response_done_ = false;
+	return pending_response_.value().encoder_;
+  }
+
+// readEnabled() bool whether reading is enabled on the connection.
+
+// ASSERT(!pending_response_.has_value());
+
+// in the Envoy::Http::Http1::ClientConnectionImpl class
+// there is a private member variable "pending_response_"
+
+// absl::optional<PendingResponse> pending_response_;
+
+// in the Envoy::Http::Http1::ClientConnectionImpl class
+// there is a "private:" struct called PendingResponse
+
+// What we can learn:
+// The ClientConnectionImpl has a connection
+// (this is probably found in the inherited classes: class ClientConnectionImpl : public ClientConnection, public ConnectionImpl )
+
+// It also can only hold one connection at a time
+// We know that because it uses an optional (???) <-----
+// We can tell because the optional gets set when a connection gets created
+// And a second attempt to set a connection fails
+// This is us reading the newStream function, and the stack trace, and knowing the test code...
+
+// 1. we make request with body, that immediately calls newStream, optional with no value, the emplace, constructs that value, the value no longer nil, which has_value() true
+// 2. we make the second query with body, that assert all the way down that stack newStream... has_value... no, i already have a value
+
+// Class Naming
+// a class name is usually named after the thing it handles for us
+
+// if we want to control an ssh connection, we call the class SshConnection
+// if we want to control an http connection, we call the class HttpConnection
+
+// ClientConnectionImpl has the pending_response_
+// which is absl::optional<PendingResponse>
+
+// We ask if the class would handle more than one request, how would that work?
+// And then we end up in the assertion failing for the second request
+// So we know that the class cannot handle a second request
+// Therefore we know the class can only handle one request
+
+// --------
+// SIDEBAR HTTP2 VERSION OF THE ABOVE
+
+// "HTTP/2 client connection codec."
+
+// Envoy::Http::Http2::ClientConnectionImpl class
+
+// source/common/http/http2/codec_impl.h
+
+// Http::ClientConnection
+RequestEncoder& newStream(ResponseDecoder& response_decoder) override;
+
+// NOTE: the comment above it, is telling us WHICH base class it is "override"-ing
+
+// source/common/http/http2/codec_impl.cc
+
+RequestEncoder& ClientConnectionImpl::newStream(ResponseDecoder& decoder) {
+	// If the connection has been idle long enough to trigger a ping, send one
+	// ahead of creating the stream.
+	if (idle_session_requires_ping_interval_.count() != 0 &&
+		(connection_.dispatcher().timeSource().monotonicTime() - lastReceivedDataTime() >
+		 idle_session_requires_ping_interval_)) {
+	  sendKeepalive();
+	}
+  
+	ClientStreamImplPtr stream(new ClientStreamImpl(*this, per_stream_buffer_limit_, decoder));
+	// If the connection is currently above the high watermark, make sure to inform the new stream.
+	// The connection can not pass this on automatically as it has no awareness that a new stream is
+	// created.
+	if (connection_.aboveHighWatermark()) {
+	  stream->runHighWatermarkCallbacks();
+	}
+	ClientStreamImpl& stream_ref = *stream;
+	LinkedList::moveIntoList(std::move(stream), active_streams_);
+	protocol_constraints_.incrementOpenedStreamCount();
+	return stream_ref;
+  }
+
+// in HTTP2 there is a TCP connection
+// and each TCP connection can hold multiple streams (request/response cycle)
+// and each stream is a single HTTP request
+// this is a concept called MULTIPLEX
+// Multiplexing: "a system or signal involving simultaneous transmission of several messages along a single channel of communication."
+
+// whereas HTTP1 there is a TCP connection
+// and that can only hold one HTTP request/response cycle
+
+// END OF SIDEBAR
+// ----------
+
+struct PendingResponse {
+    PendingResponse(ConnectionImpl& connection, StreamInfo::BytesMeterSharedPtr&& bytes_meter,
+                    ResponseDecoder* decoder)
+        : encoder_(connection, std::move(bytes_meter)), decoder_(decoder) {}
+    RequestEncoderImpl encoder_;
+    ResponseDecoder* decoder_;
+  };
+
+// its constructor takes in the connection, bytes_meter, and decoder
+// it initialises its own "encoder_" and "decoder_" member variables
+
+// has_value() method comes along because it is an "optional" type (specifically absl::optional)
+// absl::lts_20240722::optional<TYPE-HERE>::has_value()
+
+// optional::has_value()
+// "Determines whether the optional contains a value. Returns false if and only if *this is empty."
+
+// ----------
+
+// What is an ActiveRequest ?
+
+// using ActiveRequestPtr = std::unique_ptr<ActiveRequest>;
+
+// its a struct inside of the "private:" of the Envoy::Http::CodecClient class
+
+  /**
+   * Wrapper for an outstanding request. Designed for handling stream multiplexing.
+   */
+  struct ActiveRequest : LinkedObject<ActiveRequest>,
+                         public Event::DeferredDeletable,
+                         public StreamCallbacks,
+                         public ResponseDecoderWrapper,
+                         public RequestEncoderWrapper {
+    ActiveRequest(CodecClient& parent, ResponseDecoder& inner)
+        : ResponseDecoderWrapper(inner), RequestEncoderWrapper(nullptr), parent_(parent),
+          header_validator_(
+              parent.host_->cluster().makeHeaderValidator(parent.codec_->protocol())) {
+      switch (parent.protocol()) {
+      case Protocol::Http10:
+      case Protocol::Http11:
+        // HTTP/1.1 codec does not support half-close on the response completion.
+        wait_encode_complete_ = false;
+        break;
+      case Protocol::Http2:
+      case Protocol::Http3:
+        wait_encode_complete_ = true;
+        break;
+      }
+    }
+
+    void decodeHeaders(ResponseHeaderMapPtr&& headers, bool end_stream) override;
+
+    // StreamCallbacks
+    void onResetStream(StreamResetReason reason, absl::string_view) override {
+      parent_.onReset(*this, reason);
+    }
+    void onAboveWriteBufferHighWatermark() override {}
+    void onBelowWriteBufferLowWatermark() override {}
+
+    // StreamDecoderWrapper
+    void onPreDecodeComplete() override { parent_.responsePreDecodeComplete(*this); }
+    void onDecodeComplete() override {}
+
+    // RequestEncoderWrapper
+    void onEncodeComplete() override { parent_.requestEncodeComplete(*this); }
+
+    // RequestEncoder
+    Status encodeHeaders(const RequestHeaderMap& headers, bool end_stream) override;
+
+    void setEncoder(RequestEncoder& encoder) {
+      inner_encoder_ = &encoder;
+      inner_encoder_->getStream().addCallbacks(*this);
+    }
+
+    void removeEncoderCallbacks() { inner_encoder_->getStream().removeCallbacks(*this); }
+
+    CodecClient& parent_;
+    Http::ClientHeaderValidatorPtr header_validator_;
+    bool wait_encode_complete_{true};
+    bool encode_complete_{false};
+    bool decode_complete_{false};
+  };
