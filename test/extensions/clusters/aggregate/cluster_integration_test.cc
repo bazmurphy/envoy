@@ -187,12 +187,14 @@ INSTANTIATE_TEST_SUITE_P(
     IpVersions, AggregateIntegrationTest,
     testing::Combine(testing::ValuesIn(TestEnvironment::getIpVersionsForTest()), testing::Bool()));
 
-TEST_P(AggregateIntegrationTest, CircuitBreakingChildLimitLowerThanAggregate) {
+TEST_P(AggregateIntegrationTest, CircuitBreakingChildLimitLowerThanAggregateMaxConn) {
   // 1. Add circuit breaker config for aggregate cluster - done
   // 2. Add circuit breaker config for cluster1_ and/or cluster2_ clusters - done
   // 3. Check the circuit breaker stats for the aggregate cluster - done
   // 4. Check the circuit breaker stats for the cluster1_ and cluster2_ - done
   // 5. Send a request - done
+
+  // Add circuit breaker config to aggregate cluster
   config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
     auto* static_resources = bootstrap.mutable_static_resources();
     auto* cluster = static_resources->mutable_clusters(1);
@@ -203,13 +205,13 @@ TEST_P(AggregateIntegrationTest, CircuitBreakingChildLimitLowerThanAggregate) {
   });
 
   initialize();
-  // Create an updated version of cluster1_ with circuit breakers
-  auto* threshold1_ = cluster1_.mutable_circuit_breakers()->mutable_thresholds()->Add();
-  threshold1_->set_track_remaining(true);
-  threshold1_->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-  threshold1_->mutable_max_connections()->set_value(1);
 
-  cleanupUpstreamAndDownstream();
+  // Create an updated version of cluster1_ with circuit breakers
+  auto* threshold_cluster1 = cluster1_.mutable_circuit_breakers()->mutable_thresholds()->Add();
+  threshold_cluster1->set_track_remaining(true);
+  threshold_cluster1->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
+  threshold_cluster1->mutable_max_connections()->set_value(1);
+
   // Send the updated cluster via CDS
   sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster,
                                                              {cluster1_}, {cluster1_}, {}, "413");
@@ -217,6 +219,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakingChildLimitLowerThanAggregate) {
   // before creating a connection - cluster_1
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_cx", 1);
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.cx_open", 0);
+
   // before creating a connection - aggregate_cluster
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_cx",
                                10);
@@ -228,7 +231,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakingChildLimitLowerThanAggregate) {
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_cx", 0);
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.cx_open", 1);
 
-  // after creating a connection - aggregate_cluster
+  // after creating a connection- aggregate_cluster
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_cx",
                                10);
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.cx_open", 0);
@@ -236,7 +239,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakingChildLimitLowerThanAggregate) {
   cleanupUpstreamAndDownstream();
 }
 
-TEST_P(AggregateIntegrationTest, CircuitBreakingAggregateLimitLowerThanChild) {
+TEST_P(AggregateIntegrationTest, CircuitBreakingAggregateLimitLowerThanChildMaxConn) {
   config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
     auto* static_resources = bootstrap.mutable_static_resources();
     auto* cluster = static_resources->mutable_clusters(1);
@@ -247,13 +250,13 @@ TEST_P(AggregateIntegrationTest, CircuitBreakingAggregateLimitLowerThanChild) {
   });
 
   initialize();
-  // Create an updated version of cluster1_ with circuit breakers
-  auto* threshold1_ = cluster1_.mutable_circuit_breakers()->mutable_thresholds()->Add();
-  threshold1_->set_track_remaining(true);
-  threshold1_->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-  threshold1_->mutable_max_connections()->set_value(10);
 
-  cleanupUpstreamAndDownstream();
+  // Create an updated version of cluster1_ with circuit breakers
+  auto* threshold_cluster1 = cluster1_.mutable_circuit_breakers()->mutable_thresholds()->Add();
+  threshold_cluster1->set_track_remaining(true);
+  threshold_cluster1->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
+  threshold_cluster1->mutable_max_connections()->set_value(10);
+
   // Send the updated cluster via CDS
   sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster,
                                                              {cluster1_}, {cluster1_}, {}, "413");
@@ -261,6 +264,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakingAggregateLimitLowerThanChild) {
   // before creating a connection - cluster_1
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_cx", 10);
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.cx_open", 0);
+
   // before creating a connection - aggregate_cluster
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_cx",
                                1);
@@ -276,7 +280,112 @@ TEST_P(AggregateIntegrationTest, CircuitBreakingAggregateLimitLowerThanChild) {
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_cx",
                                1);
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.cx_open", 0);
-  
+
+  cleanupUpstreamAndDownstream();
+}
+
+TEST_P(AggregateIntegrationTest, CircuitBreakingChildLimitLowerThanAggregateMaxRequets) {
+
+  // Add circuit breaker config to aggregate cluster
+  config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
+    auto* static_resources = bootstrap.mutable_static_resources();
+    auto* cluster = static_resources->mutable_clusters(1);
+    auto* threshold = cluster->mutable_circuit_breakers()->mutable_thresholds()->Add();
+    threshold->set_track_remaining(true);
+    threshold->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
+    threshold->mutable_max_requests()->set_value(10);
+  });
+
+  initialize();
+
+  // Create an updated version of cluster1_ with circuit breakers
+  auto* threshold_cluster1 = cluster1_.mutable_circuit_breakers()->mutable_thresholds()->Add();
+  threshold_cluster1->set_track_remaining(true);
+  threshold_cluster1->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
+  threshold_cluster1->mutable_max_requests()->set_value(1);
+
+  // Send the updated cluster via CDS
+  sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster,
+                                                             {cluster1_}, {cluster1_}, {}, "413");
+
+  // before sending a request - cluster_1
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_rq", 1);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_open", 0);
+
+  // before sending a request - aggregate_cluster
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_rq",
+                               10);
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_open", 0);
+
+  codec_client_ = makeHttpConnection(lookupPort("http"));
+  auto response = codec_client_->makeHeaderOnlyRequest(
+      Http::TestRequestHeaderMapImpl{{":method", "GET"},
+                                     {":path", "/aggregatecluster"},
+                                     {":scheme", "http"},
+                                     {":authority", "host"}});
+  waitForNextUpstreamRequest(FirstUpstreamIndex);
+
+  // after sending a request - cluster_1
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_rq", 0);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_open", 1);
+
+  // after sending a request - aggregate_cluster
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_rq",
+                               10);
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_open", 0);
+
+  cleanupUpstreamAndDownstream();
+}
+
+TEST_P(AggregateIntegrationTest, CircuitBreakingAggregateLimitLowerThanChildMaxRequests) {
+
+  config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
+    auto* static_resources = bootstrap.mutable_static_resources();
+    auto* cluster = static_resources->mutable_clusters(1);
+    auto* threshold = cluster->mutable_circuit_breakers()->mutable_thresholds()->Add();
+    threshold->set_track_remaining(true);
+    threshold->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
+    threshold->mutable_max_requests()->set_value(1);
+  });
+
+  initialize();
+
+  // Create an updated version of cluster1_ with circuit breakers
+  auto* threshold_cluster1 = cluster1_.mutable_circuit_breakers()->mutable_thresholds()->Add();
+  threshold_cluster1->set_track_remaining(true);
+  threshold_cluster1->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
+  threshold_cluster1->mutable_max_requests()->set_value(10);
+
+  // Send the updated cluster via CDS
+  sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster,
+                                                             {cluster1_}, {cluster1_}, {}, "413");
+
+  // before sending a request - cluster_1
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_rq", 10);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_open", 0);
+
+  // before sending a request - aggregate_cluster
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_rq",
+                               1);
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_open", 0);
+
+  codec_client_ = makeHttpConnection(lookupPort("http"));
+  auto response = codec_client_->makeHeaderOnlyRequest(
+      Http::TestRequestHeaderMapImpl{{":method", "GET"},
+                                     {":path", "/aggregatecluster"},
+                                     {":scheme", "http"},
+                                     {":authority", "host"}});
+  waitForNextUpstreamRequest(FirstUpstreamIndex);
+
+  // after sending a request - cluster_1
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_rq", 9);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_open", 0);
+
+  // after sending a request - aggregate_cluster
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_rq",
+                               1);
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_open", 0);
+
   cleanupUpstreamAndDownstream();
 }
 
