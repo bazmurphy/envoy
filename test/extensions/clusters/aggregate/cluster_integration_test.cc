@@ -657,45 +657,57 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
 
   // ----------
 
-  // this is where we try to use another client to send another request
+  // TEST 2
+  // use two clients, send two requests, the first will trip the circuit breaker, the second will get auto-rejected because the circuit breaker is tripped
 
-  // Envoy::IntegrationCodecClientPtr codec_client_2 = makeHttpConnection(lookupPort("http"));
+  // send request2 from client1
+  auto aggregate_cluster_response2 = codec_client_1->makeHeaderOnlyRequest(
+    Http::TestRequestHeaderMapImpl{{":method", "GET"},{":path", "/aggregatecluster"},{":scheme", "http"},{":authority", "host"}}
+  );
 
-  // send the second request (this should also go via "aggregate_cluster" through to "cluster_1")
-  // auto aggregate_cluster_response2 = codec_client_2->makeRequestWithBody(
-  //   Http::TestRequestHeaderMapImpl{
-  //     {":method", "GET"},{":path", "/aggregatecluster"},{":scheme", "http"},{":authority", "host"}}, 
-  //     1024
-  //   );
+  // tell the upstream cluster (index 2) (which is cluster_1) to wait for the request2 to arrive
+  waitForNextUpstreamRequest(FirstUpstreamIndex);
 
-  // check the circuit breaker stats again:
-  // EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_open")->value(), 0);
-  // EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value(), 0);
+  // make another client
+  Envoy::IntegrationCodecClientPtr codec_client_2 = makeHttpConnection(lookupPort("http"));
 
-  // EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_open")->value(), 0);
-  // EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value(), 0);
+  // send request3 from client2
+  auto aggregate_cluster_response3 = codec_client_2->makeHeaderOnlyRequest(
+    Http::TestRequestHeaderMapImpl{{":method", "GET"},{":path", "/aggregatecluster"},{":scheme", "http"},{":authority", "host"}}
+  );
 
-  // std::cout << "---------- 98 DID WE GET HERE?" << std::endl;
+  // wait for response3 to complete
+  ASSERT_TRUE(aggregate_cluster_response3->waitForEndStream());
 
-  // the second response should fail (fast?) with 503
-  // ASSERT_TRUE(aggregate_cluster_response2->waitForEndStream());
-  // EXPECT_EQ("503", aggregate_cluster_response2->headers().getStatusValue());
+  // check the status is 503 (because the circuit breaker is open and so it is automatically rejected)
+  EXPECT_EQ("503", aggregate_cluster_response3->headers().getStatusValue());
+  std::cout << "aggregate_cluster_response3 headers().getStatusValue(): " << aggregate_cluster_response3->headers().getStatusValue() << std::endl;
 
-  // std::cout << "AFTER request/response2 aggregate_cluster rq_pending_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value() << std::endl;
-  // std::cout << "AFTER request/response2 cluster_1 rq_pending_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value() << std::endl;
+  // complete request2
+  upstream_request_->encodeHeaders(default_response_headers_, true);
 
-  // completes the first request/response
-  // upstream_request_->encodeHeaders(default_response_headers_, true);
+  // wait for response2 to complete
+  ASSERT_TRUE(aggregate_cluster_response2->waitForEndStream());
 
-  // wait for first response to complete
-  // ASSERT_TRUE(aggregate_cluster_response1->waitForEndStream());
-  // the first response should succeed with 200
-  // EXPECT_EQ("200", aggregate_cluster_response1->headers().getStatusValue());
+  // check the status is 200
+  EXPECT_EQ("200", aggregate_cluster_response2->headers().getStatusValue());
+  std::cout << "aggregate_cluster_response2 headers().getStatusValue(): " << aggregate_cluster_response2->headers().getStatusValue() << std::endl;
+
+  // check the upstream_rq_pending_overflow counters:
+  EXPECT_EQ(test_server_->counter("cluster.aggregate_cluster.upstream_rq_pending_overflow")->value(), 0);
+  EXPECT_EQ(test_server_->counter("cluster.cluster_1.upstream_rq_pending_overflow")->value(), 1);
+
+  std::cout << "aggregate_cluster upstream_rq_pending_overflow: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_pending_overflow")->value() << std::endl;
+  std::cout << "cluster_1 upstream_rq_pending_overflow: " << test_server_->counter("cluster.cluster_1.upstream_rq_pending_overflow")->value() << std::endl;
+
+  std::cout << "---------- 98 DID WE GET HERE?" << std::endl;
 
   // "test requires explicit cleanupUpstreamAndDownstream"
   cleanupUpstreamAndDownstream();
 
   std::cout << "---------- 99 TEST END" << std::endl;
+
+  // std::numeric_limits<uint32_t>::max() < use that to set the circuit breakers to their maximum value
 }
 
 } // namespace
