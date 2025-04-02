@@ -648,6 +648,14 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
   // std::cout << "AFTER request/response1 cluster_1 remaining_pending: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value() << std::endl;
  
   // -----------
+  
+  std::cout << "---------- 14 WAIT FOR RESPONSE END OF STREAM AND CHECK FOR 200" << std::endl;
+
+  ASSERT_TRUE(aggregate_cluster_response1->waitForEndStream());
+
+  EXPECT_EQ("200", aggregate_cluster_response1->headers().getStatusValue());
+
+  // ----------
 
   // this is where we try to use another client to send another request
 
