@@ -141,6 +141,12 @@ public:
     config_helper_.addConfigModifier([this](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
       bootstrap.mutable_cluster_manager()->set_enable_deferred_cluster_creation(
           deferred_cluster_creation_);
+
+      // this is to able to track the remaining circuit breaker stats for the aggregate cluster
+      // auto* static_resources = bootstrap.mutable_static_resources();
+      // auto* cluster = static_resources->mutable_clusters(1);
+      // auto* threshold = cluster->mutable_circuit_breakers()->mutable_thresholds()->Add();
+      // threshold->set_track_remaining(true);
     });
     HttpIntegrationTest::initialize();
 
@@ -186,6 +192,49 @@ public:
 INSTANTIATE_TEST_SUITE_P(
     IpVersions, AggregateIntegrationTest,
     testing::Combine(testing::ValuesIn(TestEnvironment::getIpVersionsForTest()), testing::Bool()));
+
+TEST_P(AggregateIntegrationTest, CircuitBreakingMaxConnection) {
+  // 1. Add circuit breaker config for aggregate cluster
+  // 2. Add circuit breaker config for cluster1_ and/or cluster2_ cluster
+  // 3. Check the circuit breaker stats for the aggregate , cluster1_ and cluster2_
+  // 4. Send a request.
+  config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
+    auto* static_resources = bootstrap.mutable_static_resources();
+    auto* cluster = static_resources->mutable_clusters(1);
+    auto* threshold = cluster->mutable_circuit_breakers()->mutable_thresholds()->Add();
+    threshold->set_track_remaining(true);
+    threshold->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
+    threshold->mutable_max_connections()->set_value(1);
+    threshold->mutable_max_pending_requests()->set_value(1);
+    threshold->mutable_max_requests()->set_value(1);
+    threshold->mutable_max_retries()->set_value(1);
+  });
+
+  initialize();
+
+  std::cout << "remaining connections: "
+            << test_server_
+                   ->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_cx")
+                   ->value()
+            << std::endl;
+  std::cout << "remaining requests: "
+            << test_server_
+                   ->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_rq")
+                   ->value()
+            << std::endl;
+  std::cout << "remaining pending requests: "
+            << test_server_
+                   ->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")
+                   ->value()
+            << std::endl;
+  std::cout << "remaining retries: "
+            << test_server_
+                   ->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_retries")
+                   ->value()
+            << std::endl;
+
+  cleanupUpstreamAndDownstream();
+}
 
 TEST_P(AggregateIntegrationTest, ClusterUpDownUp) {
   // Calls our initialize(), which includes establishing a listener, route, and cluster.
