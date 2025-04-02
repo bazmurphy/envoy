@@ -2,7 +2,7 @@
 
 // the specific constructor used by this class:
 
-// [0] (in here at the top)
+// [0] test/extensions/clusters/aggregate/cluster_integration_test.cc
 AggregateIntegrationTest() : HttpIntegrationTest(Http::CodecType::HTTP1, std::get<0>(GetParam()), config()),
 
 // [1] test/integration/http_integration.h (132-133)
@@ -78,7 +78,7 @@ BaseIntegrationTest::BaseIntegrationTest(const InstanceConstSharedPtrFn& upstrea
                                          const std::string& config)
     : BaseIntegrationTest(upstream_address_fn, version, configToBootstrap(config)) {}
 
-// [8] from above - delegate constructor
+// [8] from above - "delegate constructor"
 BaseIntegrationTest(upstream_address_fn, version, configToBootstrap(config))
 
 // [8-sidequest] test/integration/base_integration_test.cc (32-41)
@@ -130,12 +130,13 @@ BaseIntegrationTest::BaseIntegrationTest(const InstanceConstSharedPtrFn& upstrea
 #endif
 }
 
-// [11]
+// [10]
 
 // TODO
 
 
 // ----------
+
 // Member VARIABLES in HttpIntegrationTest that maybe of use
 // test/integration/http_integration.h (359+)
 
@@ -157,14 +158,16 @@ Http::TestRequestHeaderMapImpl default_request_headers_{{":method", "GET"},
 Http::CodecType downstream_protocol_{Http::CodecType::HTTP1};
 
 // ----------
+
 // Member METHODS in HttpIntegrationTest that maybe of use
 
 // TODO
 
 
 // ----------
+
 // Member VARIABLES in BaseIntegrationTest that maybe of use
-// test/integration/base_integration_test.h (??)
+// test/integration/base_integration_test.h
 
 // work out what this is: (line 151)
 Api::ApiPtr api_;
@@ -199,8 +202,9 @@ uint32_t concurrency_{1};
 FakeUpstreamConfig upstream_config_{time_system_};
 
 // ----------
+
 // Member METHODS in BaseIntegrationTest that maybe of use
-// test/integration/base_integration_test.h (??)
+// test/integration/base_integration_test.h
 
 // Initialize the basic proto configuration, create fake upstreams, and start Envoy.
 virtual void initialize();
@@ -241,6 +245,7 @@ void cleanUpXdsConnection(); // this is used in TearDown (in this file)
 std::vector<Stats::GaugeSharedPtr> gauges() override { return statStore().gauges(); }
 
 
+// ---------
 
 // Protobufs
 
@@ -265,47 +270,7 @@ const ::envoy::config::cluster::v3::CircuitBreakers& _internal_circuit_breakers(
 // bazel-bin/external/envoy_api/envoy/config/cluster/v3/circuit_breaker.pb.h 
 
 // TOO MUCH TO PASTE HERE...
-
-
-----------
-
-// LIST OF MORE THINGS/EXAMPLES I FOUND THAT I THINK MAY BE USEFUL :
-
-codec_client_ = makeHttpConnection(lookupPort("http"));
-
-auto response = codec_client_->makeRequestWithBody(
-                                    Http::TestRequestHeaderMapImpl{
-                                      {":method", "GET"},
-                                      {":path", "/aggregatecluster"},
-                                      {":scheme", "http"},
-                                      {":authority", "host"},
-                                      {"x-forwarded-for", "10.0.0.1"},
-                                      {"x-envoy-retry-on", "5xx"}
-                                    }
-                              );
-
-auto response = codec_client_->makeRequestWithBody(default_request_headers_, 1024);
-
-ASSERT_TRUE(response->waitForEndStream());
-
-// ----------
-
-config_helper_.addRuntimeOverride("circuit_breakers.cluster_0.default.max_requests", "0");
-config_helper_.addRuntimeOverride("circuit_breakers.cluster_0.default.max_retries", "1024");
-
-// ----------
-
-test_server_->waitForGaugeEq("cluster.cluster_0.upstream_rq_active", 0);
-test_server_->waitForGaugeEq("cluster.cluster_0.upstream_rq_pending_active", 0);
-
-EXPECT_EQ(test_server_->counter("cluster.cluster_0.upstream_rq_pending_overflow")->value(), 1);
-
-// ----------
-
-config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
-  // BOOTSTRAP METHODS THAT MIGHT BE USEFUL
-  bootstrap.mutable_static_resources()->add_clusters();
-});
+// but this has all the methods for working with the circuit breaker fields
 
 // ----------
 
@@ -720,3 +685,327 @@ struct PendingResponse {
     bool encode_complete_{false};
     bool decode_complete_{false};
   };
+
+
+// ----------
+
+// INITIALIZE()
+
+// we need to dig in to the initialize() function
+
+// test/extensions/clusters/aggregate/cluster_integration_test.cc
+
+void initialize() override {
+  use_lds_ = false;
+  setUpstreamCount(2);                         // the CDS cluster
+  setUpstreamProtocol(Http::CodecType::HTTP2); // CDS uses gRPC uses HTTP2.
+
+  defer_listener_finalization_ = true;
+  config_helper_.addConfigModifier([this](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
+    bootstrap.mutable_cluster_manager()->set_enable_deferred_cluster_creation(
+        deferred_cluster_creation_);
+  });
+  HttpIntegrationTest::initialize();
+
+  addFakeUpstream(Http::CodecType::HTTP2);
+  addFakeUpstream(Http::CodecType::HTTP2);
+  cluster1_ = ConfigHelper::buildStaticCluster(
+      FirstClusterName, fake_upstreams_[FirstUpstreamIndex]->localAddress()->ip()->port(),
+      Network::Test::getLoopbackAddressString(version_));
+  cluster2_ = ConfigHelper::buildStaticCluster(
+      SecondClusterName, fake_upstreams_[SecondUpstreamIndex]->localAddress()->ip()->port(),
+      Network::Test::getLoopbackAddressString(version_));
+
+  // Let Envoy establish its connection to the CDS server.
+  acceptXdsConnection();
+
+  // Do the initial compareDiscoveryRequest / sendDiscoveryResponse for cluster_1.
+  EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "", {}, {}, {}, true));
+  sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster,
+                                                             {cluster1_}, {cluster1_}, {}, "55");
+
+  test_server_->waitForGaugeGe("cluster_manager.active_clusters", 3);
+
+  // Wait for our statically specified listener to become ready, and register its port in the
+  // test framework's downstream listener port map.
+  test_server_->waitUntilListenersReady();
+  registerTestServerPorts({"http"});
+}
+
+
+// the above changes some config settings: use_lds_, setUpstreamCount and setUpstreamProtocol
+
+// test/integration/base_integration_test.h
+
+// this is initialized as true (but we change it to false)
+bool use_lds_{true}; // Use the integration framework's LDS set up.
+
+// Sets fake_upstreams_count_
+void setUpstreamCount(uint32_t count) { fake_upstreams_count_ = count; }
+
+// Sets upstream_protocol_ and alters the upstream protocol in the config_helper_
+void setUpstreamProtocol(Http::CodecType protocol);
+
+// test/integration/base_integration_test.cc
+
+void BaseIntegrationTest::setUpstreamProtocol(Http::CodecType protocol) {
+  upstream_config_.upstream_protocol_ = protocol;
+  if (upstream_config_.upstream_protocol_ == Http::CodecType::HTTP2) {
+    config_helper_.addConfigModifier(
+        [&](envoy::config::bootstrap::v3::Bootstrap& bootstrap) -> void {
+          RELEASE_ASSERT(bootstrap.mutable_static_resources()->clusters_size() >= 1, "");
+          ConfigHelper::HttpProtocolOptions protocol_options;
+          protocol_options.mutable_explicit_http_config()->mutable_http2_protocol_options();
+          ConfigHelper::setProtocolOptions(
+              *bootstrap.mutable_static_resources()->mutable_clusters(0), protocol_options);
+        });
+  } else if (upstream_config_.upstream_protocol_ == Http::CodecType::HTTP1) {
+    config_helper_.addConfigModifier(
+        [&](envoy::config::bootstrap::v3::Bootstrap& bootstrap) -> void {
+          RELEASE_ASSERT(bootstrap.mutable_static_resources()->clusters_size() >= 1, "");
+          ConfigHelper::HttpProtocolOptions protocol_options;
+          protocol_options.mutable_explicit_http_config()->mutable_http_protocol_options();
+          ConfigHelper::setProtocolOptions(
+              *bootstrap.mutable_static_resources()->mutable_clusters(0), protocol_options);
+        });
+  } else {
+    RELEASE_ASSERT(protocol == Http::CodecType::HTTP3, "");
+    setUdpFakeUpstream(FakeUpstreamConfig::UdpConfig());
+    upstream_tls_ = true;
+    config_helper_.configureUpstreamTls(false, true);
+    config_helper_.addConfigModifier(
+        [&](envoy::config::bootstrap::v3::Bootstrap& bootstrap) -> void {
+          // Docker doesn't allow writing to the v6 address returned by
+          // Network::Utility::getLocalAddress.
+          if (version_ == Network::Address::IpVersion::v6) {
+            auto* bind_config_address = bootstrap.mutable_static_resources()
+                                            ->mutable_clusters(0)
+                                            ->mutable_upstream_bind_config()
+                                            ->mutable_source_address();
+            bind_config_address->set_address("::1");
+            bind_config_address->set_port_value(0);
+          }
+
+          RELEASE_ASSERT(bootstrap.mutable_static_resources()->clusters_size() >= 1, "");
+          ConfigHelper::HttpProtocolOptions protocol_options;
+          protocol_options.mutable_explicit_http_config()->mutable_http3_protocol_options();
+          ConfigHelper::setProtocolOptions(
+              *bootstrap.mutable_static_resources()->mutable_clusters(0), protocol_options);
+        });
+  }
+}
+
+// the above initialize() then calls HttpIntegrationTest::initialize();
+
+// test/integration/http_integration.cc
+void HttpIntegrationTest::initialize() {
+  if (downstream_protocol_ != Http::CodecType::HTTP3) {
+    return BaseIntegrationTest::initialize();
+  }
+#ifdef ENVOY_ENABLE_QUIC
+  // Needs to be instantiated before base class calls initialize() which starts a QUIC listener
+  // according to the config.
+  quic_transport_socket_factory_ = IntegrationUtil::createQuicUpstreamTransportSocketFactory(
+      *api_, stats_store_, context_manager_, thread_local_, san_to_match_);
+
+  BaseIntegrationTest::initialize();
+  registerTestServerPorts({"http"}, test_server_);
+
+  // Needs to outlive all QUIC connections.
+  auto cluster = std::make_shared<NiceMock<Upstream::MockClusterInfo>>();
+  auto quic_connection_persistent_info =
+      Quic::createPersistentQuicInfoForCluster(*dispatcher_, *cluster);
+  // Config IETF QUIC flow control window.
+  quic_connection_persistent_info->quic_config_
+      .SetInitialMaxStreamDataBytesIncomingBidirectionalToSend(
+          Http3::Utility::OptionsLimits::DEFAULT_INITIAL_STREAM_WINDOW_SIZE);
+  // Config Google QUIC flow control window.
+  quic_connection_persistent_info->quic_config_.SetInitialStreamFlowControlWindowToSend(
+      Http3::Utility::OptionsLimits::DEFAULT_INITIAL_STREAM_WINDOW_SIZE);
+  // Adjust timeouts.
+  quic::QuicTime::Delta connect_timeout = quic::QuicTime::Delta::FromSeconds(5 * TIMEOUT_FACTOR);
+  quic_connection_persistent_info->quic_config_.set_max_time_before_crypto_handshake(
+      connect_timeout);
+  quic_connection_persistent_info->quic_config_.set_max_idle_time_before_crypto_handshake(
+      connect_timeout);
+
+  quic_connection_persistent_info_ = std::move(quic_connection_persistent_info);
+#else
+  ASSERT(false, "running a QUIC integration test without compiling QUIC");
+#endif
+}
+
+// which itself calls BaseIntegrationTest::initialize(); (because we aren't using HTTP3)
+
+// test/integration/base_integration_test.cc
+void BaseIntegrationTest::initialize() {
+  RELEASE_ASSERT(!initialized_, "");
+  RELEASE_ASSERT(Event::Libevent::Global::initialized(), "");
+  initialized_ = true;
+
+  createUpstreams();
+  createXdsUpstream();
+  createEnvoy();
+
+#ifdef ENVOY_ADMIN_FUNCTIONALITY
+  if (!skip_tag_extraction_rule_check_) {
+    checkForMissingTagExtractionRules();
+  }
+#endif
+}
+
+// the above calls the three methods: createUpstreams, createXdsUpstream, createEnvoy
+
+// test/integration/base_integration_test.cc
+void BaseIntegrationTest::createUpstreams() {
+  for (uint32_t i = 0; i < fake_upstreams_count_; ++i) {
+    auto endpoint = upstream_address_fn_(i);
+    createUpstream(endpoint, upstreamConfig());
+  }
+}
+
+// upstreamConfig() returns the "upstream_copnfig_" member variable
+
+// test/integration/base_integration_test.h
+FakeUpstreamConfig& upstreamConfig() { return upstream_config_; }
+
+// createUpstreams() calls createUpstream (...)
+
+// test/integration/base_integration_test.cc
+void BaseIntegrationTest::createUpstream(Network::Address::InstanceConstSharedPtr endpoint,
+                                         FakeUpstreamConfig& config) {
+  Network::DownstreamTransportSocketFactoryPtr factory =
+      upstream_tls_ ? createUpstreamTlsContext(config)
+                    : Network::Test::createRawBufferDownstreamSocketFactory();
+  if (autonomous_upstream_) {
+    fake_upstreams_.emplace_back(std::make_unique<AutonomousUpstream>(
+        std::move(factory), endpoint, config, autonomous_allow_incomplete_streams_));
+  } else {
+    fake_upstreams_.emplace_back(
+        std::make_unique<FakeUpstream>(std::move(factory), endpoint, config));
+  }
+}
+
+// test/integration/base_integration_test.cc
+void BaseIntegrationTest::createXdsUpstream() {
+  if (create_xds_upstream_ == false) {
+    return;
+  }
+  if (tls_xds_upstream_ == false) {
+    addFakeUpstream(Http::CodecType::HTTP2);
+  } else {
+    envoy::extensions::transport_sockets::tls::v3::DownstreamTlsContext tls_context;
+    auto* common_tls_context = tls_context.mutable_common_tls_context();
+    common_tls_context->add_alpn_protocols(Http::Utility::AlpnNames::get().Http2);
+    auto* tls_cert = common_tls_context->add_tls_certificates();
+    tls_cert->mutable_certificate_chain()->set_filename(
+        TestEnvironment::runfilesPath("test/config/integration/certs/upstreamcert.pem"));
+    tls_cert->mutable_private_key()->set_filename(
+        TestEnvironment::runfilesPath("test/config/integration/certs/upstreamkey.pem"));
+    auto cfg = *Extensions::TransportSockets::Tls::ServerContextConfigImpl::create(
+        tls_context, factory_context_, false);
+
+    upstream_stats_store_ = std::make_unique<Stats::TestIsolatedStoreImpl>();
+    auto context = *Extensions::TransportSockets::Tls::ServerSslSocketFactory::create(
+        std::move(cfg), context_manager_, *upstream_stats_store_->rootScope(),
+        std::vector<std::string>{});
+    addFakeUpstream(std::move(context), Http::CodecType::HTTP2, /*autonomous_upstream=*/false);
+  }
+  xds_upstream_ = fake_upstreams_.back().get();
+}
+
+// "tls_xds_upstream_" is a member variable of the BaseIntegrationTest class
+
+// so we probably end up in the second if block, because the "tls_xds_upstream_" value is initialized as false:
+
+// test/integration/base_integration_test.h
+bool tls_xds_upstream_{false};
+
+// therefore we probably call addFakeUpstream(...)
+
+// test/integration/base_integration_test.h
+FakeUpstream& addFakeUpstream(Http::CodecType type) {
+  auto config = configWithType(type);
+  fake_upstreams_.emplace_back(std::make_unique<FakeUpstream>(0, version_, config));
+  return *fake_upstreams_.back();
+}
+
+// "version_" is a member variable of the BaseIntegrationTest class
+// that gets initialised by the argument "version" that gets given to the BaseIntegrationTest constructor
+
+// test/integration/base_integration_test.h
+Network::Address::IpVersion version_; // The IpVersion (IPv4, IPv6) to use.
+
+// test/integration/base_integration_test.h
+FakeUpstreamConfig configWithType(Http::CodecType type) const {
+  FakeUpstreamConfig config = upstream_config_;
+  config.upstream_protocol_ = type;
+  if (type != Http::CodecType::HTTP3) {
+    config.udp_fake_upstream_ = absl::nullopt;
+  }
+  return config;
+}
+
+// test/integration/base_integration_test.cc
+void BaseIntegrationTest::createEnvoy() {
+  std::vector<uint32_t> ports;
+  for (auto& upstream : fake_upstreams_) {
+    if (upstream->localAddress()->ip()) {
+      ports.push_back(upstream->localAddress()->ip()->port());
+    }
+  }
+
+  const std::string bootstrap_path = finalizeConfigWithPorts(config_helper_, ports, use_lds_);
+
+  std::vector<std::string> named_ports;
+  const auto& static_resources = config_helper_.bootstrap().static_resources();
+  named_ports.reserve(static_resources.listeners_size());
+  for (int i = 0; i < static_resources.listeners_size(); ++i) {
+    named_ports.push_back(static_resources.listeners(i).name());
+  }
+  createGeneratedApiTestServer(bootstrap_path, named_ports, {false, true, false}, false);
+}
+
+
+
+// ----------
+
+// LIST OF MORE THINGS/EXAMPLES FOUND THAT I THINK MAY BE USEFUL/WORTH REMEMBERING :
+
+codec_client_ = makeHttpConnection(lookupPort("http"));
+
+auto response = codec_client_->makeRequestWithBody(
+                                    Http::TestRequestHeaderMapImpl{
+                                      {":method", "GET"},
+                                      {":path", "/aggregatecluster"},
+                                      {":scheme", "http"},
+                                      {":authority", "host"},
+                                      {"x-forwarded-for", "10.0.0.1"},
+                                      {"x-envoy-retry-on", "5xx"}
+                                    }
+                              );
+
+auto response = codec_client_->makeRequestWithBody(default_request_headers_, 1024);
+
+ASSERT_TRUE(response->waitForEndStream());
+
+// ----------
+
+config_helper_.addRuntimeOverride("circuit_breakers.cluster_0.default.max_requests", "0");
+config_helper_.addRuntimeOverride("circuit_breakers.cluster_0.default.max_retries", "1024");
+
+// ----------
+
+test_server_->waitForGaugeEq("cluster.cluster_0.upstream_rq_active", 0);
+test_server_->waitForGaugeEq("cluster.cluster_0.upstream_rq_pending_active", 0);
+
+EXPECT_EQ(test_server_->counter("cluster.cluster_0.upstream_rq_pending_overflow")->value(), 1);
+
+// ----------
+
+config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
+  // BOOTSTRAP HAS METHODS THAT MIGHT BE USEFUL (look at the protobuf fields and methods)
+  bootstrap.mutable_static_resources()->add_clusters();
+});
+
+// ----------
