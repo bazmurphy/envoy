@@ -153,6 +153,11 @@ public:
         SecondClusterName, fake_upstreams_[SecondUpstreamIndex]->localAddress()->ip()->port(),
         Network::Test::getLoopbackAddressString(version_));
 
+    // auto* threshold1_ = cluster1_.mutable_circuit_breakers()->mutable_thresholds()->Add();
+    // threshold1_->set_track_remaining(true);
+    // threshold1_->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
+    // threshold1_->mutable_max_connections()->set_value(5);
+
     // Let Envoy establish its connection to the CDS server.
     acceptXdsConnection();
 
@@ -187,46 +192,83 @@ INSTANTIATE_TEST_SUITE_P(
     IpVersions, AggregateIntegrationTest,
     testing::Combine(testing::ValuesIn(TestEnvironment::getIpVersionsForTest()), testing::Bool()));
 
-TEST_P(AggregateIntegrationTest, CircuitBreakingMaxConnection) {
-  // 1. Add circuit breaker config for aggregate cluster
-  // 2. Add circuit breaker config for cluster1_ and/or cluster2_ cluster
-  // 3. Check the circuit breaker stats for the aggregate , cluster1_ and cluster2_
-  // 4. Send a request.
+TEST_P(AggregateIntegrationTest, CircuitBreakingChildLimitLowerThanAggregate) {
+  // 1. Add circuit breaker config for aggregate cluster - done
+  // 2. Add circuit breaker config for cluster1_ and/or cluster2_ clusters - done
+  // 3. Check the circuit breaker stats for the aggregate cluster - done
+  // 4. Check the circuit breaker stats for the cluster1_ and cluster2_ - done
+  // 5. Send a request - done
   config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
     auto* static_resources = bootstrap.mutable_static_resources();
     auto* cluster = static_resources->mutable_clusters(1);
     auto* threshold = cluster->mutable_circuit_breakers()->mutable_thresholds()->Add();
     threshold->set_track_remaining(true);
     threshold->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-    threshold->mutable_max_connections()->set_value(1);
-    threshold->mutable_max_pending_requests()->set_value(1);
-    threshold->mutable_max_requests()->set_value(1);
-    threshold->mutable_max_retries()->set_value(1);
+    threshold->mutable_max_connections()->set_value(10);
   });
 
   initialize();
+  // Create an updated version of cluster1_ with circuit breakers
+  auto* threshold1_ = cluster1_.mutable_circuit_breakers()->mutable_thresholds()->Add();
+  threshold1_->set_track_remaining(true);
+  threshold1_->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
+  threshold1_->mutable_max_connections()->set_value(1);
 
-  std::cout << "remaining connections: "
+  cleanupUpstreamAndDownstream();
+  // Send the updated cluster via CDS
+  sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster,
+                                                             {cluster1_}, {cluster1_}, {}, "413");
+  // Wait for the update to be applied , I tried all of this but all of them make the test fail
+  // because the remaing gauge is not created
+  // test_server_->waitForCounterEq("cluster_manager.cluster_modified", 1);
+  // test_server_->waitForGaugeEq("cluster_manager.warming_clusters", 0);
+  // test_server_->waitForGaugeGe("cluster_manager.active_clusters", 3);
+
+  // I had to manually set a timeout so the changes can be applied before we call the gauge for
+  // cluster_1
+  timeSystem().advanceTimeWait(std::chrono::milliseconds(100));
+
+  std::cout << "before creating a connection - cluster_1" << std::endl;
+  std::cout
+      << "cluster_1 remaining connections: "
+      << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_cx")->value()
+      << std::endl;
+  std::cout << "cluster_1 circuit breaker status: "
+            << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.cx_open")->value()
+            << std::endl;
+
+  std::cout << "before creating a connection - aggregate_cluster" << std::endl;
+  std::cout << "aggregate_cluster remaining connections: "
             << test_server_
                    ->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_cx")
                    ->value()
             << std::endl;
-  std::cout << "remaining requests: "
-            << test_server_
-                   ->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_rq")
-                   ->value()
-            << std::endl;
-  std::cout << "remaining pending requests: "
-            << test_server_
-                   ->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")
-                   ->value()
-            << std::endl;
-  std::cout << "remaining retries: "
-            << test_server_
-                   ->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_retries")
-                   ->value()
+  std::cout
+      << "aggregate_cluster circuit breaker status:"
+      << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.cx_open")->value()
+      << std::endl;
+
+  testRouterHeaderOnlyRequestAndResponse(nullptr, FirstUpstreamIndex, "/aggregatecluster");
+
+  std::cout << "after creating a connection - cluster_1" << std::endl;
+  std::cout
+      << "cluster_1 remaining connections: "
+      << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_cx")->value()
+      << std::endl;
+  std::cout << "cluster_1 circuit breaker status: "
+            << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.cx_open")->value()
             << std::endl;
 
+  std::cout << "after creating a connection - aggregate_cluster" << std::endl;
+  std::cout << "aggregate_cluster remaining connections: "
+            << test_server_
+                   ->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_cx")
+                   ->value()
+            << std::endl;
+  std::cout
+      << "aggregate_cluster circuit breaker status:"
+      << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.cx_open")->value()
+      << std::endl;
   cleanupUpstreamAndDownstream();
 }
 
