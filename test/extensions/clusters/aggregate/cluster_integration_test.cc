@@ -683,50 +683,50 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
 // BEFORE request/response1 cluster_1 remaining_rq: 1
 // BEFORE request/response1 cluster_1 rq_pending_open: 0
 // BEFORE request/response1 cluster_1 remaining_pending: 1
-// test/extensions/clusters/aggregate/cluster_integration_test.cc:571: Failure
+// test/extensions/clusters/aggregate/cluster_integration_test.cc:568: Failure
 // Value of: aggregate_cluster_response1->waitForEndStream()
 //   Actual: false (Timed out waiting for end stream
 // )
 // Expected: true
 // Stack trace:
-//   0x2b58c7a: Envoy::(anonymous namespace)::AggregateIntegrationTest_CircuitBreakerTest_Test::TestBody()
-//   0x742310b: testing::internal::HandleSehExceptionsInMethodIfSupported<>()
-//   0x7412cbd: testing::internal::HandleExceptionsInMethodIfSupported<>()
-//   0x73fb533: testing::Test::Run()
-//   0x73fc0fa: testing::TestInfo::Run()
+//   0x2b59d97: Envoy::(anonymous namespace)::AggregateIntegrationTest_CircuitBreakerTest_Test::TestBody()
+//   0x7426d4b: testing::internal::HandleSehExceptionsInMethodIfSupported<>()
+//   0x74168fd: testing::internal::HandleExceptionsInMethodIfSupported<>()
+//   0x73ff173: testing::Test::Run()
+//   0x73ffd3a: testing::TestInfo::Run()
 // ... Google Test internal frames ...
 
-// [2025-04-01 16:06:07.722][12][critical][assert] [source/common/network/connection_impl.cc:122] assert failure: !socket_->isOpen() && delayed_close_timer_ == nullptr. Details: ConnectionImpl was unexpectedly torn down without being closed.
-// [2025-04-01 16:06:07.722][12][error][envoy_bug] [./source/common/common/assert.h:38] stacktrace for envoy bug
-// [2025-04-01 16:06:07.734][12][error][envoy_bug] [./source/common/common/assert.h:43] #0 Envoy::Network::ConnectionImpl::~ConnectionImpl() [0x604e4af]
-// [2025-04-01 16:06:07.745][12][error][envoy_bug] [./source/common/common/assert.h:43] #1 Envoy::Network::ClientConnectionImpl::~ClientConnectionImpl() [0x606e538]
-// [2025-04-01 16:06:07.756][12][error][envoy_bug] [./source/common/common/assert.h:43] #2 Envoy::Network::ClientConnectionImpl::~ClientConnectionImpl() [0x606d530]
-// [2025-04-01 16:06:07.767][12][error][envoy_bug] [./source/common/common/assert.h:43] #3 Envoy::Network::ClientConnectionImpl::~ClientConnectionImpl() [0x606d589]
-// [2025-04-01 16:06:07.778][12][error][envoy_bug] [./source/common/common/assert.h:43] #4 std::default_delete<>::operator()() [0x30ad2ec]
-// [2025-04-01 16:06:07.789][12][error][envoy_bug] [./source/common/common/assert.h:43] #5 std::unique_ptr<>::~unique_ptr() [0x308b03a]
-// [2025-04-01 16:06:07.800][12][error][envoy_bug] [./source/common/common/assert.h:43] #6 Envoy::Http::CodecClient::~CodecClient() [0x3091552]
-// [2025-04-01 16:06:07.811][12][error][envoy_bug] [./source/common/common/assert.h:43] #7 Envoy::Http::CodecClientProd::~CodecClientProd() [0x308aa25]
-// [2025-04-01 16:06:07.822][12][error][envoy_bug] [./source/common/common/assert.h:43] #8 Envoy::IntegrationCodecClient::~IntegrationCodecClient() [0x3091139]
-// [2025-04-01 16:06:07.833][12][error][envoy_bug] [./source/common/common/assert.h:43] #9 Envoy::IntegrationCodecClient::~IntegrationCodecClient() [0x3091159]
-// [2025-04-01 16:06:07.844][12][error][envoy_bug] [./source/common/common/assert.h:43] #10 std::default_delete<>::operator()() [0x2badbac]
-// [2025-04-01 16:06:07.855][12][error][envoy_bug] [./source/common/common/assert.h:43] #11 std::unique_ptr<>::~unique_ptr() [0x2bad16d]
-// [2025-04-01 16:06:07.866][12][error][envoy_bug] [./source/common/common/assert.h:43] #12 Envoy::(anonymous namespace)::AggregateIntegrationTest_CircuitBreakerTest_Test::TestBody() [0x2b5a861]
-// [2025-04-01 16:06:07.866][12][error][envoy_bug] [./source/common/common/assert.h:43] #13 testing::internal::HandleSehExceptionsInMethodIfSupported<>() [0x742310b]
-// [2025-04-01 16:06:07.866][12][error][envoy_bug] [./source/common/common/assert.h:43] #14 testing::internal::HandleExceptionsInMethodIfSupported<>() [0x7412cbd]
-// [2025-04-01 16:06:07.866][12][error][envoy_bug] [./source/common/common/assert.h:43] #15 testing::Test::Run() [0x73fb533]
-// [2025-04-01 16:06:07.867][12][critical][backtrace] [./source/server/backtrace.h:129] Caught Aborted, suspect faulting address 0x103d0000000c
-// [2025-04-01 16:06:07.867][12][critical][backtrace] [./source/server/backtrace.h:113] Backtrace (use tools/stack_decode.py to get line numbers):
-// [2025-04-01 16:06:07.867][12][critical][backtrace] [./source/server/backtrace.h:114] Envoy version: 0/1.34.0-dev/test/DEBUG/BoringSSL
-// [2025-04-01 16:06:07.878][12][critical][backtrace] [./source/server/backtrace.h:121] #0: Envoy::SignalAction::sigHandler() [0x646be1c]
-// [2025-04-01 16:06:07.878][12][critical][backtrace] [./source/server/backtrace.h:123] #1: [0x72c744642520]
+// [2025-04-02 08:25:22.088][12][critical][assert] [source/common/network/connection_impl.cc:122] assert failure: !socket_->isOpen() && delayed_close_timer_ == nullptr. Details: ConnectionImpl was unexpectedly torn down without being closed.
+// [2025-04-02 08:25:22.088][12][error][envoy_bug] [./source/common/common/assert.h:38] stacktrace for envoy bug
+// [2025-04-02 08:25:22.100][12][error][envoy_bug] [./source/common/common/assert.h:43] #0 Envoy::Network::ConnectionImpl::~ConnectionImpl() [0x605191f]
+// [2025-04-02 08:25:22.112][12][error][envoy_bug] [./source/common/common/assert.h:43] #1 Envoy::Network::ClientConnectionImpl::~ClientConnectionImpl() [0x60719a8]
+// [2025-04-02 08:25:22.123][12][error][envoy_bug] [./source/common/common/assert.h:43] #2 Envoy::Network::ClientConnectionImpl::~ClientConnectionImpl() [0x60709a0]
+// [2025-04-02 08:25:22.135][12][error][envoy_bug] [./source/common/common/assert.h:43] #3 Envoy::Network::ClientConnectionImpl::~ClientConnectionImpl() [0x60709f9]
+// [2025-04-02 08:25:22.146][12][error][envoy_bug] [./source/common/common/assert.h:43] #4 std::default_delete<>::operator()() [0x30ae47c]
+// [2025-04-02 08:25:22.157][12][error][envoy_bug] [./source/common/common/assert.h:43] #5 std::unique_ptr<>::~unique_ptr() [0x308c1ca]
+// [2025-04-02 08:25:22.169][12][error][envoy_bug] [./source/common/common/assert.h:43] #6 Envoy::Http::CodecClient::~CodecClient() [0x30926e2]
+// [2025-04-02 08:25:22.180][12][error][envoy_bug] [./source/common/common/assert.h:43] #7 Envoy::Http::CodecClientProd::~CodecClientProd() [0x308bbb5]
+// [2025-04-02 08:25:22.191][12][error][envoy_bug] [./source/common/common/assert.h:43] #8 Envoy::IntegrationCodecClient::~IntegrationCodecClient() [0x30922c9]
+// [2025-04-02 08:25:22.203][12][error][envoy_bug] [./source/common/common/assert.h:43] #9 Envoy::IntegrationCodecClient::~IntegrationCodecClient() [0x30922e9]
+// [2025-04-02 08:25:22.214][12][error][envoy_bug] [./source/common/common/assert.h:43] #10 std::default_delete<>::operator()() [0x2baeccc]
+// [2025-04-02 08:25:22.225][12][error][envoy_bug] [./source/common/common/assert.h:43] #11 std::unique_ptr<>::~unique_ptr() [0x2bae28d]
+// [2025-04-02 08:25:22.237][12][error][envoy_bug] [./source/common/common/assert.h:43] #12 Envoy::(anonymous namespace)::AggregateIntegrationTest_CircuitBreakerTest_Test::TestBody() [0x2b5b97e]
+// [2025-04-02 08:25:22.237][12][error][envoy_bug] [./source/common/common/assert.h:43] #13 testing::internal::HandleSehExceptionsInMethodIfSupported<>() [0x7426d4b]
+// [2025-04-02 08:25:22.237][12][error][envoy_bug] [./source/common/common/assert.h:43] #14 testing::internal::HandleExceptionsInMethodIfSupported<>() [0x74168fd]
+// [2025-04-02 08:25:22.237][12][error][envoy_bug] [./source/common/common/assert.h:43] #15 testing::Test::Run() [0x73ff173]
+// [2025-04-02 08:25:22.237][12][critical][backtrace] [./source/server/backtrace.h:129] Caught Aborted, suspect faulting address 0x103d0000000c
+// [2025-04-02 08:25:22.237][12][critical][backtrace] [./source/server/backtrace.h:113] Backtrace (use tools/stack_decode.py to get line numbers):
+// [2025-04-02 08:25:22.237][12][critical][backtrace] [./source/server/backtrace.h:114] Envoy version: 0/1.34.0-dev/test/DEBUG/BoringSSL
+// [2025-04-02 08:25:22.248][12][critical][backtrace] [./source/server/backtrace.h:121] #0: Envoy::SignalAction::sigHandler() [0x646ecbc]
+// [2025-04-02 08:25:22.249][12][critical][backtrace] [./source/server/backtrace.h:123] #1: [0x7771d3a42520]
 // ================================================================================
 // INFO: Found 1 test target...
 // Target //test/extensions/clusters/aggregate:cluster_integration_test up-to-date:
 //   bazel-bin/test/extensions/clusters/aggregate/cluster_integration_test
-// INFO: Elapsed time: 75.844s, Critical Path: 75.52s
-// INFO: 4 processes: 4 linux-sandbox.
-// INFO: Build completed, 1 test FAILED, 4 total actions
-// //test/extensions/clusters/aggregate:cluster_integration_test            FAILED in 16.1s
+// INFO: Elapsed time: 499.253s, Critical Path: 95.09s
+// INFO: 632 processes: 632 linux-sandbox.
+// INFO: Build completed, 1 test FAILED, 632 total actions
+// //test/extensions/clusters/aggregate:cluster_integration_test            FAILED in 16.2s
 //   /home/baz.murphy/.cache/bazel/_bazel_baz.murphy/7fcf1edc087d667522e3815b5db406ee/execroot/envoy/bazel-out/k8-fastbuild/testlogs/test/extensions/clusters/aggregate/cluster_integration_test/test.log
 
 // Executed 1 out of 1 test: 1 fails locally.
