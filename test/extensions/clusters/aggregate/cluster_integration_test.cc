@@ -412,10 +412,10 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
     // set the aggregate_cluster circuit breakers
     auto* aggregate_cluster_circuit_breakers_threshold_default = aggregate_cluster_circuit_breakers->add_thresholds();
     aggregate_cluster_circuit_breakers_threshold_default->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-    aggregate_cluster_circuit_breakers_threshold_default->mutable_max_connections()->set_value(1000000); // set this high
-    aggregate_cluster_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(1000000); // set this high
+    aggregate_cluster_circuit_breakers_threshold_default->mutable_max_connections()->set_value(1000000000); // set this high
+    aggregate_cluster_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(1000000000); // set this high
     aggregate_cluster_circuit_breakers_threshold_default->mutable_max_requests()->set_value(1); // set this to 1
-    aggregate_cluster_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1000000); // set this high
+    aggregate_cluster_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1000000000); // set this high
     aggregate_cluster_circuit_breakers_threshold_default->set_track_remaining(true);
 
     std::cout << "AFTER aggregate_cluster thresholds_size(): " << aggregate_cluster_circuit_breakers->thresholds_size() << std::endl;
@@ -465,10 +465,10 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
 
   auto* cluster1_circuit_breakers_threshold_default = cluster1_circuit_breakers->add_thresholds();
   cluster1_circuit_breakers_threshold_default->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-  cluster1_circuit_breakers_threshold_default->mutable_max_connections()->set_value(1000000); // set this high
-  cluster1_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(1000000);  // set this high
+  cluster1_circuit_breakers_threshold_default->mutable_max_connections()->set_value(1000000000); // set this high
+  cluster1_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(1000000000);  // set this high
   cluster1_circuit_breakers_threshold_default->mutable_max_requests()->set_value(1); // set this to 1
-  cluster1_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1000000);  // set this high
+  cluster1_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1000000000);  // set this high
   cluster1_circuit_breakers_threshold_default->set_track_remaining(true);
 
   // auto* cluster1_circuit_breakers_threshold_high = cluster1_circuit_breakers->add_thresholds();
@@ -702,12 +702,15 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
 
   std::cout << "---------- 98 DID WE GET HERE?" << std::endl;
 
+  // because we have made custom clients and are not using the member variable "codec_client_"
+  // they don't get closed by cleanupUpstreamAndDownstream() and so we need to close them ourselves
+  codec_client_1->close();
+  codec_client_2->close();
+
   // "test requires explicit cleanupUpstreamAndDownstream"
   cleanupUpstreamAndDownstream();
 
   std::cout << "---------- 99 TEST END" << std::endl;
-
-  // std::numeric_limits<uint32_t>::max() < use that to set the circuit breakers to their maximum value
 }
 
 } // namespace
