@@ -719,6 +719,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
 
 // LOG OUTPUT:
 
+// [ RUN      ] IpVersions/AggregateIntegrationTest.CircuitBreakerTest/3
 // ---------- 00 TEST START
 // ---------- 03 INITIALIZE START
 // ---------- 01 CONFIG MODIFY START
@@ -734,10 +735,10 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
 // AFTER aggregate_cluster has_circuit_breakers(): 1
 // AFTER aggregate_cluster thresholds_size(): 1
 // AFTER aggregate_cluster thresholds_size(): 1
-// aggregate_cluster threshold default max_connections().value(): 1000000
-// aggregate_cluster threshold default max_pending_requests().value(): 1000000
+// aggregate_cluster threshold default max_connections().value(): 1000000000
+// aggregate_cluster threshold default max_pending_requests().value(): 1000000000
 // aggregate_cluster threshold default max_requests().value(): 1
-// aggregate_cluster threshold default max_retries().value(): 1000000
+// aggregate_cluster threshold default max_retries().value(): 1000000000
 // aggregate_cluster threshold default track_remaining(): 1
 // ---------- 02 CONFIG MODIFY FINISH
 // ---------- 04 INITIALIZE FINISH
@@ -746,10 +747,10 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
 // BEFORE cluster1_circuit_breakers thresholds_size(): 0
 // AFTER cluster1_ has_circuit_breakers(): 1
 // AFTER cluster1_circuit_breakers thresholds_size(): 1
-// cluster1_ threshold default max_connections().value(): 1000000
-// cluster1_ threshold default max_pending_requests().value(): 1000000
+// cluster1_ threshold default max_connections().value(): 1000000000
+// cluster1_ threshold default max_pending_requests().value(): 1000000000
 // cluster1_ threshold default max_requests().value(): 1
-// cluster1_ threshold default max_retries().value(): 1000000
+// cluster1_ threshold default max_retries().value(): 1000000000
 // cluster1_ threshold default track_remaining(): 1
 // ---------- 05 UPDATING XDS CONFIG FOR cluster1_
 // ---------- 06 CIRCUIT BREAKER STATS [BEFORE]
@@ -772,38 +773,22 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
 // AFTER request/response1 aggregate_cluster remaining_rq: 1
 // AFTER request/response1 cluster_1 rq_open: 0
 // AFTER request/response1 cluster_1 remaining_rq: 1
+// ---------- 14 WAIT FOR RESPONSE END OF STREAM AND CHECK FOR 200
+// aggregate_cluster_response3 headers().getStatusValue(): 503
+// aggregate_cluster_response2 headers().getStatusValue(): 200
+// aggregate_cluster upstream_rq_pending_overflow: 0
+// cluster_1 upstream_rq_pending_overflow: 1
+// ---------- 98 DID WE GET HERE?
 // ---------- 99 TEST END
-// [2025-04-02 15:28:32.917][12][critical][assert] [source/common/network/connection_impl.cc:122] assert failure: !socket_->isOpen() && delayed_close_timer_ == nullptr. Details: ConnectionImpl was unexpectedly torn down without being closed.
-// [2025-04-02 15:28:32.917][12][error][envoy_bug] [./source/common/common/assert.h:38] stacktrace for envoy bug
-// [2025-04-02 15:28:32.929][12][error][envoy_bug] [./source/common/common/assert.h:43] #0 Envoy::Network::ConnectionImpl::~ConnectionImpl() [0x605127f]
-// [2025-04-02 15:28:32.941][12][error][envoy_bug] [./source/common/common/assert.h:43] #1 Envoy::Network::ClientConnectionImpl::~ClientConnectionImpl() [0x6071308]
-// [2025-04-02 15:28:32.952][12][error][envoy_bug] [./source/common/common/assert.h:43] #2 Envoy::Network::ClientConnectionImpl::~ClientConnectionImpl() [0x6070300]
-// [2025-04-02 15:28:32.964][12][error][envoy_bug] [./source/common/common/assert.h:43] #3 Envoy::Network::ClientConnectionImpl::~ClientConnectionImpl() [0x6070359]
-// [2025-04-02 15:28:32.975][12][error][envoy_bug] [./source/common/common/assert.h:43] #4 std::default_delete<>::operator()() [0x30adddc]
-// [2025-04-02 15:28:32.986][12][error][envoy_bug] [./source/common/common/assert.h:43] #5 std::unique_ptr<>::~unique_ptr() [0x308bb2a]
-// [2025-04-02 15:28:32.997][12][error][envoy_bug] [./source/common/common/assert.h:43] #6 Envoy::Http::CodecClient::~CodecClient() [0x3092042]
-// [2025-04-02 15:28:33.008][12][error][envoy_bug] [./source/common/common/assert.h:43] #7 Envoy::Http::CodecClientProd::~CodecClientProd() [0x308b515]
-// [2025-04-02 15:28:33.019][12][error][envoy_bug] [./source/common/common/assert.h:43] #8 Envoy::IntegrationCodecClient::~IntegrationCodecClient() [0x3091c29]
-// [2025-04-02 15:28:33.030][12][error][envoy_bug] [./source/common/common/assert.h:43] #9 Envoy::IntegrationCodecClient::~IntegrationCodecClient() [0x3091c49]
-// [2025-04-02 15:28:33.041][12][error][envoy_bug] [./source/common/common/assert.h:43] #10 std::default_delete<>::operator()() [0x2bae62c]
-// [2025-04-02 15:28:33.052][12][error][envoy_bug] [./source/common/common/assert.h:43] #11 std::unique_ptr<>::~unique_ptr() [0x2badbed]
-// [2025-04-02 15:28:33.063][12][error][envoy_bug] [./source/common/common/assert.h:43] #12 Envoy::(anonymous namespace)::AggregateIntegrationTest_CircuitBreakerTest_Test::TestBody() [0x2b5b13c]
-// [2025-04-02 15:28:33.074][12][error][envoy_bug] [./source/common/common/assert.h:43] #13 testing::internal::HandleSehExceptionsInMethodIfSupported<>() [0x74266cb]
-// [2025-04-02 15:28:33.084][12][error][envoy_bug] [./source/common/common/assert.h:43] #14 testing::internal::HandleExceptionsInMethodIfSupported<>() [0x741627d]
-// [2025-04-02 15:28:33.095][12][error][envoy_bug] [./source/common/common/assert.h:43] #15 testing::Test::Run() [0x73feaf3]
-// [2025-04-02 15:28:33.095][12][critical][backtrace] [./source/server/backtrace.h:129] Caught Aborted, suspect faulting address 0x103d0000000c
-// [2025-04-02 15:28:33.095][12][critical][backtrace] [./source/server/backtrace.h:113] Backtrace (use tools/stack_decode.py to get line numbers):
-// [2025-04-02 15:28:33.096][12][critical][backtrace] [./source/server/backtrace.h:114] Envoy version: 0/1.34.0-dev/test/DEBUG/BoringSSL
-// [2025-04-02 15:28:33.107][12][critical][backtrace] [./source/server/backtrace.h:121] #0: Envoy::SignalAction::sigHandler() [0x646e61c]
-// [2025-04-02 15:28:33.107][12][critical][backtrace] [./source/server/backtrace.h:123] #1: [0x7d9d4e042520]
-// ================================================================================
-// INFO: Found 1 test target...
-// Target //test/extensions/clusters/aggregate:cluster_integration_test up-to-date:
-//   bazel-bin/test/extensions/clusters/aggregate/cluster_integration_test
-// INFO: Elapsed time: 68.224s, Critical Path: 67.82s
-// INFO: 4 processes: 4 linux-sandbox.
-// INFO: Build completed, 1 test FAILED, 4 total actions
-// //test/extensions/clusters/aggregate:cluster_integration_test            FAILED in 6.1s
-//   /home/baz.murphy/.cache/bazel/_bazel_baz.murphy/7fcf1edc087d667522e3815b5db406ee/execroot/envoy/bazel-out/k8-fastbuild/testlogs/test/extensions/clusters/aggregate/cluster_integration_test/test.log
+// [external/com_google_absl/absl/flags/internal/flag.cc : 140] RAW: Restore saved value of envoy_reloadable_features_runtime_initialized to: false
+// [external/com_google_absl/absl/flags/internal/flag.cc : 140] RAW: Restore saved value of envoy_quic_always_support_server_preferred_address to: true
+// [external/com_google_absl/absl/flags/internal/flag.cc : 140] RAW: Restore saved value of envoy_reloadable_features_no_extension_lookup_by_name to: true
+// [       OK ] IpVersions/AggregateIntegrationTest.CircuitBreakerTest/3 (412 ms)
+// [----------] 16 tests from IpVersions/AggregateIntegrationTest (6749 ms total)
 
-// Executed 1 out of 1 test: 1 fails locally.
+// [----------] Global test environment tear-down
+// [==========] 16 tests from 1 test suite ran. (6749 ms total)
+// [  PASSED  ] 16 tests.
+// ================================================================================
+
+// Executed 0 out of 1 test: 1 test passes.
