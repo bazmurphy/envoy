@@ -1,4 +1,8 @@
-// ----------- NOTES FOR CONTEXT :
+// --------------------- 
+
+// NOTES FOR CONTEXT
+
+// --------------------- 
 
 // the specific constructor used by this class:
 
@@ -134,16 +138,17 @@ BaseIntegrationTest::BaseIntegrationTest(const InstanceConstSharedPtrFn& upstrea
 
 // TODO
 
+// --------------------
 
-// ----------
-
-// Member VARIABLES in HttpIntegrationTest that maybe of use
-// test/integration/http_integration.h (359+)
+// Member VARIABLES in HttpIntegrationTest class (that maybe of use)
+// test/integration/http_integration.h
 
 // The client making requests to Envoy.
 IntegrationCodecClientPtr codec_client_;
+
 // A placeholder for the first upstream connection.
 FakeHttpConnectionPtr fake_upstream_connection_;
+
 // A placeholder for the first request received at upstream.
 FakeStreamPtr upstream_request_;
 
@@ -157,16 +162,15 @@ Http::TestRequestHeaderMapImpl default_request_headers_{{":method", "GET"},
 // The codec type for the client-to-Envoy connection [this is overriden to HTTP2 in our tests]
 Http::CodecType downstream_protocol_{Http::CodecType::HTTP1};
 
-// ----------
+// --------------------
 
-// Member METHODS in HttpIntegrationTest that maybe of use
+// Member METHODS in HttpIntegrationTest class (that maybe of use)
 
-// TODO
+// TODO: !!! ADD TO THIS LIST
 
+// --------------------
 
-// ----------
-
-// Member VARIABLES in BaseIntegrationTest that maybe of use
+// Member VARIABLES in BaseIntegrationTest class (that maybe of use)
 // test/integration/base_integration_test.h
 
 // work out what this is: (line 151)
@@ -201,9 +205,9 @@ uint32_t concurrency_{1};
 // Configuration for the fake upstream.
 FakeUpstreamConfig upstream_config_{time_system_};
 
-// ----------
+// --------------------
 
-// Member METHODS in BaseIntegrationTest that maybe of use
+// Member METHODS in BaseIntegrationTest class (that maybe of use)
 // test/integration/base_integration_test.h
 
 // Initialize the basic proto configuration, create fake upstreams, and start Envoy.
@@ -233,7 +237,6 @@ void cleanUpXdsConnection(); // this is used in TearDown (in this file)
 
 // ---------
 
-
 // IntegrationTestServer
 // test/integration/server.h
 
@@ -245,9 +248,9 @@ void cleanUpXdsConnection(); // this is used in TearDown (in this file)
 std::vector<Stats::GaugeSharedPtr> gauges() override { return statStore().gauges(); }
 
 
-// ---------
+// --------------------
 
-// Protobufs
+// PROTOBUFS
 
 // bazel-bin/external/envoy_api/envoy/config/cluster/v3/cluster.pb.h (6233-6246)
 
@@ -272,31 +275,41 @@ const ::envoy::config::cluster::v3::CircuitBreakers& _internal_circuit_breakers(
 // TOO MUCH TO PASTE HERE...
 // but this has all the methods for working with the circuit breaker fields
 
-// ----------
+// --------------------
 
 // CODEC CLIENT "codec_client_"
-// "codec_client_" is a HTTP codec client used during integration testing.
 
 // "The codec client is part of Envoy’s HTTP handling architecture, specifically responsible for managing outbound HTTP connections. 
-// It abstracts the differences between various HTTP versions (HTTP/1.1, HTTP/2, HTTP/3) and provides a unified interface for sending requests and receiving responses."
+// It abstracts the differences between various HTTP versions (HTTP/1.1, HTTP/2, HTTP/3) and provides a unified interface for sending requests and receiving responses.
 // - Encodes HTTP requests and sends them to upstream servers.
 // - Decodes HTTP responses from upstream servers.
 // - Manages the lifecycle of an HTTP connection (e.g., connection establishment, keep-alive, connection pooling).
-// - Provides an interface for Envoy’s upstream HTTP filters and network components.
+// - Provides an interface for Envoy’s upstream HTTP filters and network components."
+
+// codec_client_ is a "protected:" member variable of the HttpIntegrationTest class
 
 // test/integration/http_integration.h
-// IntegrationCodecClient
+// The client making requests to Envoy.
+IntegrationCodecClientPtr codec_client_;
 
+// its a pointer to an IntegrationCodecClient
+// test/integration/http_integration.h
+using IntegrationCodecClientPtr = std::unique_ptr<IntegrationCodecClient>;
+
+// test/integration/http_integration.h
+// IntegrationCodecClient class is defined here, and inherits from Http::CodecClientProd class
+// HTTP codec client used during integration testing.
+class IntegrationCodecClient : public Http::CodecClientProd { ... }
+
+// --------------------
+
+// in the HttpIntegrationTest class the makeHttpConnection method returns a IntegrationCodecClientPtr
+
+// test/integration/http_integration.h
 IntegrationCodecClientPtr makeHttpConnection(uint32_t port);
 IntegrationCodecClientPtr makeHttpConnection(Network::ClientConnectionPtr&& conn);
 
-IntegrationStreamDecoderPtr makeHeaderOnlyRequest(const Http::RequestHeaderMap& headers);
-
-IntegrationStreamDecoderPtr makeRequestWithBody(const Http::RequestHeaderMap& headers, uint64_t body_size, bool end_stream = true);
-IntegrationStreamDecoderPtr makeRequestWithBody(const Http::RequestHeaderMap& headers, const std::string& body, bool end_stream = true);
-
 // test/integration/http_integration.cc
-// IntegrationCodecClient
 
 // makeHttpConnections (variant 1)
 // codec_client_->makeHttpConnection(...)
@@ -311,6 +324,18 @@ IntegrationCodecClientPtr HttpIntegrationTest::makeHttpConnection(Network::Clien
   EXPECT_TRUE(codec->connected()) << codec->connection()->transportFailureReason();
   return codec;
 }
+
+// --------------------
+
+// in the HttpIntegrationTest class the "make_____" methods return a IntegrationCodecClientPtr
+
+// test/integration/http_integration.h
+IntegrationStreamDecoderPtr makeHeaderOnlyRequest(const Http::RequestHeaderMap& headers);
+
+IntegrationStreamDecoderPtr makeRequestWithBody(const Http::RequestHeaderMap& headers, uint64_t body_size, bool end_stream = true);
+IntegrationStreamDecoderPtr makeRequestWithBody(const Http::RequestHeaderMap& headers, const std::string& body, bool end_stream = true);
+
+// test/integration/http_integration.cc
 
 // makeHeaderOnlyRequest
 // codec_client_->makeHeaderOnlyRequest(...)
@@ -342,7 +367,11 @@ IntegrationStreamDecoderPtr IntegrationCodecClient::makeRequestWithBody(const Ht
   return response;
 }
 
-// ----------
+// --------------------
+
+// some of these above makeRequest methods return a IntegrationStreamDecoderPtr so let's look into that:
+
+using IntegrationStreamDecoderPtr = std::unique_ptr<IntegrationStreamDecoder>;
 
 // "A stream decoder is responsible for processing incoming data in a streaming fashion. 
 // Specifically, it is part of the HTTP processing pipeline and is used 
@@ -354,39 +383,7 @@ IntegrationStreamDecoderPtr IntegrationCodecClient::makeRequestWithBody(const Ht
 // test/integration/integration_stream_decoder.h
 // IntegrationStreamDecoder
 
-// Wait for the end of stream on the next upstream stream on any of the provided fake upstreams.
-// Sets fake_upstream_connection_ to the connection, and upstream_request_ to stream.
-// In cases where the upstream that will receive the request is not deterministic, a second
-// upstream index may be provided, in which case both upstreams will be checked for requests.
-absl::optional<uint64_t> waitForNextUpstreamRequest(const std::vector<uint64_t>& upstream_indices,std::chrono::milliseconds connection_wait_timeout = TestUtility::DefaultTimeout);
-void waitForNextUpstreamRequest(uint64_t upstream_index = 0, std::chrono::milliseconds connection_wait_timeout = TestUtility::DefaultTimeout);
-
-waitForEndStream(std::chrono::milliseconds timeout = TestUtility::DefaultTimeout);
-
-// test/integration/integration_stream_decoder.cc
-// IntegrationStreamDecoder
-
-absl::optional<uint64_t> HttpIntegrationTest::waitForNextUpstreamRequest(const std::vector<uint64_t>& upstream_indices, std::chrono::milliseconds connection_wait_timeout) {
-  absl::optional<uint64_t> upstream_with_request;
-  // If there is no upstream connection, wait for it to be established.
-  if (!fake_upstream_connection_) {
-    upstream_with_request = waitForNextUpstreamConnection(upstream_indices, connection_wait_timeout,
-                                                          fake_upstream_connection_);
-  }
-  // Wait for the next stream on the upstream connection.
-  AssertionResult result = fake_upstream_connection_->waitForNewStream(*dispatcher_, upstream_request_);
-  RELEASE_ASSERT(result, result.message());
-  // Wait for the stream to be completely received.
-  result = upstream_request_->waitForEndStream(*dispatcher_);
-  RELEASE_ASSERT(result, result.message());
-
-  return upstream_with_request;
-}
-
-void HttpIntegrationTest::waitForNextUpstreamRequest(uint64_t upstream_index, std::chrono::milliseconds connection_wait_timeout) {
-  waitForNextUpstreamRequest(std::vector<uint64_t>({upstream_index}), connection_wait_timeout);
-}
-
+// TODO look at the header and impplementation files
 
 // response1->waitForEndStream(...)
 AssertionResult IntegrationStreamDecoder::waitForEndStream(std::chrono::milliseconds timeout) {
@@ -409,7 +406,9 @@ AssertionResult IntegrationStreamDecoder::waitForEndStream(std::chrono::millisec
   return AssertionSuccess();
 }
 
-// ----------
+// --------------------
+
+// INTEGRATION TEST SERVER
 
 // test/integration/server.h
 // IntegrationTestServer
@@ -420,19 +419,18 @@ Stats::GaugeSharedPtr gauge(const std::string& name) override {
   return TestUtility::findGauge(statStore(), name);
 }
 
-
-// ---------
+// --------------------
 
 IntegrationStreamDecoderPtr IntegrationCodecClient::makeRequestWithBody(const Http::RequestHeaderMap& headers, const std::string& body, bool end_stream) {
-	auto response = std::make_unique<IntegrationStreamDecoder>(dispatcher_);
-	Http::RequestEncoder& encoder = newStream(*response); // THIS IS CALLED (SEE BELOW)
-	encoder.getStream().addCallbacks(*response);
-	encoder.encodeHeaders(headers, false).IgnoreError();
-	Buffer::OwnedImpl data(body);
-	encoder.encodeData(data, end_stream);
-	flushWrite();
-	return response;
-  }
+  auto response = std::make_unique<IntegrationStreamDecoder>(dispatcher_);
+  Http::RequestEncoder& encoder = newStream(*response); // THIS IS CALLED (SEE BELOW)
+  encoder.getStream().addCallbacks(*response);
+  encoder.encodeHeaders(headers, false).IgnoreError();
+  Buffer::OwnedImpl data(body);
+  encoder.encodeData(data, end_stream);
+  flushWrite();
+  return response;
+}
 
 // CodecClient
 
@@ -450,15 +448,15 @@ RequestEncoder& newStream(ResponseDecoder& response_decoder);
 // source/common/http/codec_client.cc
 
 RequestEncoder& CodecClient::newStream(ResponseDecoder& response_decoder) {
-	ActiveRequestPtr request(new ActiveRequest(*this, response_decoder));
-	request->setEncoder(codec_->newStream(*request));
-	LinkedList::moveIntoList(std::move(request), active_requests_);
+  ActiveRequestPtr request(new ActiveRequest(*this, response_decoder));
+  request->setEncoder(codec_->newStream(*request));
+  LinkedList::moveIntoList(std::move(request), active_requests_);
   
-	auto upstream_info = connection_->streamInfo().upstreamInfo();
-	upstream_info->setUpstreamNumStreams(upstream_info->upstreamNumStreams() + 1);
+  auto upstream_info = connection_->streamInfo().upstreamInfo();
+  upstream_info->setUpstreamNumStreams(upstream_info->upstreamNumStreams() + 1);
   
-	disableIdleTimer();
-	return *active_requests_.front();
+  disableIdleTimer();
+  return *active_requests_.front();
   }
 
 // "codec_" is a protected: member variable in the Envoy::Http::CodecClient class
@@ -473,14 +471,14 @@ RequestEncoder& CodecClient::newStream(ResponseDecoder& response_decoder) {
  * A client side HTTP connection.
  */
 class ClientConnection : public virtual Connection {
-	public:
-	  /**
-	   * Create a new outgoing request stream.
-	   * @param response_decoder supplies the decoder callbacks to fire response events into.
-	   * @return RequestEncoder& supplies the encoder to write the request into.
-	   */
-	  virtual RequestEncoder& newStream(ResponseDecoder& response_decoder) PURE;
-	};
+  public:
+    /**
+     * Create a new outgoing request stream.
+     * @param response_decoder supplies the decoder callbacks to fire response events into.
+     * @return RequestEncoder& supplies the encoder to write the request into.
+     */
+    virtual RequestEncoder& newStream(ResponseDecoder& response_decoder) PURE;
+  };
 
 // but this is just an interface, we can see in the stack trace is it related to the http1 implementation
 
@@ -488,9 +486,7 @@ class ClientConnection : public virtual Connection {
 
 // source/common/http/http1/codec_impl.h
 
-/**
- * Implementation of Http::ClientConnection for HTTP/1.1.
- */
+// Implementation of Http::ClientConnection for HTTP/1.1.
 class ClientConnectionImpl : public ClientConnection, public ConnectionImpl {...}
 
 // which has this "public:" method
@@ -503,15 +499,15 @@ RequestEncoder& newStream(ResponseDecoder& response_decoder) override;
 // source/common/http/http1/codec_impl.cc
 
 RequestEncoder& ClientConnectionImpl::newStream(ResponseDecoder& response_decoder) {
-	// If reads were disabled due to flow control, we expect reads to always be enabled again before
-	// reusing this connection. This is done when the response is received.
-	ASSERT(connection_.readEnabled());
+  // If reads were disabled due to flow control, we expect reads to always be enabled again before
+  // reusing this connection. This is done when the response is received.
+  ASSERT(connection_.readEnabled());
   
-	ASSERT(!pending_response_.has_value());
-	ASSERT(pending_response_done_);
-	pending_response_.emplace(*this, std::move(bytes_meter_before_stream_), &response_decoder);
-	pending_response_done_ = false;
-	return pending_response_.value().encoder_;
+  ASSERT(!pending_response_.has_value());
+  ASSERT(pending_response_done_);
+  pending_response_.emplace(*this, std::move(bytes_meter_before_stream_), &response_decoder);
+  pending_response_done_ = false;
+  return pending_response_.value().encoder_;
   }
 
 // readEnabled() bool whether reading is enabled on the connection.
@@ -570,30 +566,30 @@ RequestEncoder& newStream(ResponseDecoder& response_decoder) override;
 // source/common/http/http2/codec_impl.cc
 
 RequestEncoder& ClientConnectionImpl::newStream(ResponseDecoder& decoder) {
-	// If the connection has been idle long enough to trigger a ping, send one
-	// ahead of creating the stream.
-	if (idle_session_requires_ping_interval_.count() != 0 &&
-		(connection_.dispatcher().timeSource().monotonicTime() - lastReceivedDataTime() >
-		 idle_session_requires_ping_interval_)) {
-	  sendKeepalive();
-	}
+  // If the connection has been idle long enough to trigger a ping, send one
+  // ahead of creating the stream.
+  if (idle_session_requires_ping_interval_.count() != 0 &&
+    (connection_.dispatcher().timeSource().monotonicTime() - lastReceivedDataTime() >
+     idle_session_requires_ping_interval_)) {
+    sendKeepalive();
+  }
   
-	ClientStreamImplPtr stream(new ClientStreamImpl(*this, per_stream_buffer_limit_, decoder));
-	// If the connection is currently above the high watermark, make sure to inform the new stream.
-	// The connection can not pass this on automatically as it has no awareness that a new stream is
-	// created.
-	if (connection_.aboveHighWatermark()) {
-	  stream->runHighWatermarkCallbacks();
-	}
-	ClientStreamImpl& stream_ref = *stream;
-	LinkedList::moveIntoList(std::move(stream), active_streams_);
-	protocol_constraints_.incrementOpenedStreamCount();
-	return stream_ref;
+  ClientStreamImplPtr stream(new ClientStreamImpl(*this, per_stream_buffer_limit_, decoder));
+  // If the connection is currently above the high watermark, make sure to inform the new stream.
+  // The connection can not pass this on automatically as it has no awareness that a new stream is
+  // created.
+  if (connection_.aboveHighWatermark()) {
+    stream->runHighWatermarkCallbacks();
+  }
+  ClientStreamImpl& stream_ref = *stream;
+  LinkedList::moveIntoList(std::move(stream), active_streams_);
+  protocol_constraints_.incrementOpenedStreamCount();
+  return stream_ref;
   }
 
 // in HTTP2 there is a TCP connection
 // and each TCP connection can hold multiple streams (request/response cycle)
-// and each stream is a single HTTP request
+// and each stream is a single HTTP request/response cycle
 // this is a concept called MULTIPLEX
 // Multiplexing: "a system or signal involving simultaneous transmission of several messages along a single channel of communication."
 
@@ -601,7 +597,7 @@ RequestEncoder& ClientConnectionImpl::newStream(ResponseDecoder& decoder) {
 // and that can only hold one HTTP request/response cycle
 
 // END OF SIDEBAR
-// ----------
+// --------------------
 
 struct PendingResponse {
     PendingResponse(ConnectionImpl& connection, StreamInfo::BytesMeterSharedPtr&& bytes_meter,
@@ -620,7 +616,7 @@ struct PendingResponse {
 // optional::has_value()
 // "Determines whether the optional contains a value. Returns false if and only if *this is empty."
 
-// ----------
+// --------------------
 
 // What is an ActiveRequest ?
 
@@ -687,7 +683,7 @@ struct PendingResponse {
   };
 
 
-// ----------
+// --------------------
 
 // INITIALIZE()
 
@@ -966,7 +962,7 @@ void BaseIntegrationTest::createEnvoy() {
   createGeneratedApiTestServer(bootstrap_path, named_ports, {false, true, false}, false);
 }
 
-// ----------
+// --------------------
 
 // Look into the "config_helper"
 
@@ -1059,7 +1055,154 @@ void ConfigHelper::applyConfigModifiers() {
   config_modifiers_.clear();
 }
 
-// ----------
+// --------------------
+
+// WAIT FOR NEXT UPSTREAM REQUEST "waitForNextUpstreamRequest"
+
+// class HttpIntegrationTest
+
+// test/integration/http_integration.h
+
+// Wait for the end of stream on the next upstream stream on any of the provided fake upstreams.
+// Sets fake_upstream_connection_ to the connection, and upstream_request_ to stream.
+// In cases where the upstream that will receive the request is not deterministic, a second
+// upstream index may be provided, in which case both upstreams will be checked for requests.
+absl::optional<uint64_t> waitForNextUpstreamRequest(const std::vector<uint64_t>& upstream_indices,std::chrono::milliseconds connection_wait_timeout = TestUtility::DefaultTimeout);
+void waitForNextUpstreamRequest(uint64_t upstream_index = 0, std::chrono::milliseconds connection_wait_timeout = TestUtility::DefaultTimeout);
+
+// test/integration/http_integration.cc
+absl::optional<uint64_t> HttpIntegrationTest::waitForNextUpstreamRequest(const std::vector<uint64_t>& upstream_indices, std::chrono::milliseconds connection_wait_timeout) {
+  absl::optional<uint64_t> upstream_with_request;
+  // If there is no upstream connection, wait for it to be established.
+  if (!fake_upstream_connection_) {
+    upstream_with_request = waitForNextUpstreamConnection(upstream_indices, connection_wait_timeout,
+                                                          fake_upstream_connection_);
+  }
+  // Wait for the next stream on the upstream connection.
+  AssertionResult result = fake_upstream_connection_->waitForNewStream(*dispatcher_, upstream_request_);
+  RELEASE_ASSERT(result, result.message());
+  // Wait for the stream to be completely received.
+  result = upstream_request_->waitForEndStream(*dispatcher_);
+  RELEASE_ASSERT(result, result.message());
+
+  return upstream_with_request;
+}
+
+// test/integration/http_integration.cc
+void HttpIntegrationTest::waitForNextUpstreamRequest(uint64_t upstream_index, std::chrono::milliseconds connection_wait_timeout) {
+  waitForNextUpstreamRequest(std::vector<uint64_t>({upstream_index}), connection_wait_timeout);
+}
+
+// --------------------
+
+// WAIT FOR NEW STREAM "waitForNewStream"
+
+// its a method of the FakeHttpConnection class
+
+// test/integration/fake_upstream.h
+// Provides a fake HTTP connection for integration testing.
+class FakeHttpConnection : public Http::ServerConnectionCallbacks, public FakeConnectionBase {...}
+
+// test/integration/fake_upstream.h
+ABSL_MUST_USE_RESULT
+testing::AssertionResult
+waitForNewStream(Event::Dispatcher& client_dispatcher, FakeStreamPtr& stream,
+                 std::chrono::milliseconds timeout = TestUtility::DefaultTimeout);
+
+AssertionResult FakeHttpConnection::waitForNewStream(Event::Dispatcher& client_dispatcher,
+                                                     FakeStreamPtr& stream,
+                                                     std::chrono::milliseconds timeout) {
+  absl::MutexLock lock(&lock_);
+  if (!waitForWithDispatcherRun(
+          time_system_, lock_,
+          [this]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(lock_) { return !new_streams_.empty(); },
+          client_dispatcher, timeout)) {
+    return AssertionFailure() << "Timed out waiting for new stream.";
+  }
+  stream = std::move(new_streams_.front());
+  new_streams_.pop_front();
+  return AssertionSuccess();
+}
+
+// --------------------
+
+// FAKE UPSTREAM
+
+// test/integration/fake_upstream.h
+// Provides a fake HTTP stream for integration testing.
+class FakeStream : public Http::RequestDecoder, public Http::StreamCallbacks, Logger::Loggable<Logger::Id::testing> {...}
+
+// test/integration/fake_upstream.h
+ABSL_MUST_USE_RESULT
+testing::AssertionResult
+waitForNewStream(Event::Dispatcher& client_dispatcher, FakeStreamPtr& stream,
+                 std::chrono::milliseconds timeout = TestUtility::DefaultTimeout);
+
+// test/integration/fake_upstream.cc
+AssertionResult FakeHttpConnection::waitForNewStream(Event::Dispatcher& client_dispatcher,
+                                                     FakeStreamPtr& stream,
+                                                     std::chrono::milliseconds timeout) {
+  absl::MutexLock lock(&lock_);
+  if (!waitForWithDispatcherRun(
+          time_system_, lock_,
+          [this]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(lock_) { return !new_streams_.empty(); },
+          client_dispatcher, timeout)) {
+    return AssertionFailure() << "Timed out waiting for new stream.";
+  }
+  stream = std::move(new_streams_.front());
+  new_streams_.pop_front();
+  return AssertionSuccess();
+}
+
+// --------------------
+
+// FAKE STREAM
+
+// in the tests when we want to respond as the upstream cluster, we do this type of thing:
+
+upstream_request_->encodeHeaders(default_response_headers_, true);
+
+// this encodeHeaders(...) method is on the FakeStream class
+
+// test/integration/fake_upstream.h
+// Provides a fake HTTP stream for integration testing.
+class FakeStream : public Http::RequestDecoder, public Http::StreamCallbacks, Logger::Loggable<Logger::Id::testing> {...}
+
+// test/integration/fake_upstream.h
+void encodeHeaders(const Http::HeaderMap& headers, bool end_stream);
+
+// test/integration/fake_upstream.cc
+ASSERT_TRUE(upstream_request_->waitForEndStream(*dispatcher_));
+
+void FakeStream::encodeHeaders(const Http::HeaderMap& headers, bool end_stream) {
+  std::shared_ptr<Http::ResponseHeaderMap> headers_copy(
+      Http::createHeaderMap<Http::ResponseHeaderMapImpl>(headers));
+  if (add_served_by_header_) {
+    headers_copy->addCopy(Http::LowerCaseString("x-served-by"),
+                          parent_.connection().connectionInfoProvider().localAddress()->asString());
+  }
+
+  if (header_validator_) {
+    // Ignore validation results
+    auto result = header_validator_->transformResponseHeaders(*headers_copy);
+    if (result.new_headers) {
+      headers_copy = std::move(result.new_headers);
+    }
+  }
+
+  postToConnectionThread([this, headers_copy = std::move(headers_copy), end_stream]() -> void {
+    {
+      absl::MutexLock lock(&lock_);
+      if (!parent_.connected() || saw_reset_) {
+        // Encoded already deleted.
+        return;
+      }
+    }
+    encoder_.encodeHeaders(*headers_copy, end_stream);
+  });
+}
+
+// --------------------
 
 // LIST OF MORE THINGS/EXAMPLES FOUND THAT I THINK MAY BE USEFUL/WORTH REMEMBERING :
 
@@ -1080,23 +1223,24 @@ auto response = codec_client_->makeRequestWithBody(default_request_headers_, 102
 
 ASSERT_TRUE(response->waitForEndStream());
 
-// ----------
+// --------------------
 
 config_helper_.addRuntimeOverride("circuit_breakers.cluster_0.default.max_requests", "0");
 config_helper_.addRuntimeOverride("circuit_breakers.cluster_0.default.max_retries", "1024");
 
-// ----------
+// --------------------
 
 test_server_->waitForGaugeEq("cluster.cluster_0.upstream_rq_active", 0);
 test_server_->waitForGaugeEq("cluster.cluster_0.upstream_rq_pending_active", 0);
 
 EXPECT_EQ(test_server_->counter("cluster.cluster_0.upstream_rq_pending_overflow")->value(), 1);
 
-// ----------
+// --------------------
 
 config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
   // BOOTSTRAP HAS METHODS THAT MIGHT BE USEFUL (look at the protobuf fields and methods)
   bootstrap.mutable_static_resources()->add_clusters();
 });
 
-// ----------
+// --------------------
+

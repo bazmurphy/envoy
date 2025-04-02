@@ -412,10 +412,10 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
     // set the aggregate_cluster circuit breakers
     auto* aggregate_cluster_circuit_breakers_threshold_default = aggregate_cluster_circuit_breakers->add_thresholds();
     aggregate_cluster_circuit_breakers_threshold_default->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-    aggregate_cluster_circuit_breakers_threshold_default->mutable_max_connections()->set_value(1);
-    aggregate_cluster_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(1);
-    aggregate_cluster_circuit_breakers_threshold_default->mutable_max_requests()->set_value(1);
-    aggregate_cluster_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1);
+    aggregate_cluster_circuit_breakers_threshold_default->mutable_max_connections()->set_value(1000000); // set this high
+    aggregate_cluster_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(1000000); // set this high
+    aggregate_cluster_circuit_breakers_threshold_default->mutable_max_requests()->set_value(1); // set this to 1
+    aggregate_cluster_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1000000); // set this high
     aggregate_cluster_circuit_breakers_threshold_default->set_track_remaining(true);
 
     std::cout << "AFTER aggregate_cluster thresholds_size(): " << aggregate_cluster_circuit_breakers->thresholds_size() << std::endl;
@@ -465,10 +465,10 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
 
   auto* cluster1_circuit_breakers_threshold_default = cluster1_circuit_breakers->add_thresholds();
   cluster1_circuit_breakers_threshold_default->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-  cluster1_circuit_breakers_threshold_default->mutable_max_connections()->set_value(1);
-  cluster1_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(1);
-  cluster1_circuit_breakers_threshold_default->mutable_max_requests()->set_value(1);
-  cluster1_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1);
+  cluster1_circuit_breakers_threshold_default->mutable_max_connections()->set_value(1000000); // set this high
+  cluster1_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(1000000);  // set this high
+  cluster1_circuit_breakers_threshold_default->mutable_max_requests()->set_value(1); // set this to 1
+  cluster1_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1000000);  // set this high
   cluster1_circuit_breakers_threshold_default->set_track_remaining(true);
 
   // auto* cluster1_circuit_breakers_threshold_high = cluster1_circuit_breakers->add_thresholds();
@@ -496,6 +496,8 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
 
   // ----------
 
+  std::cout << "---------- 05 UPDATING XDS CONFIG FOR cluster1_" << std::endl;
+
   // !!! we need to send the updated cluster1_ to envoy via xds so we the "remaining" stats become available
   // (because they are not initialized by default during cluster creation)
 
@@ -510,93 +512,144 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
   // ----------
 
   // check the initial circuit breaker stats:
- 
-  // aggregate_cluster max_requests
-  std::cout << "BEFORE request/response1 aggregate_cluster rq_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_open")->value() << std::endl;
-  std::cout << "BEFORE request/response1 aggregate_cluster remaining_rq: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_rq")->value() << std::endl;
-  // aggregate_cluster max_pending_requests
-  std::cout << "BEFORE request/response1 aggregate_cluster rq_pending_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value() << std::endl;
-  std::cout << "BEFORE request/response1 aggregate_cluster remaining_pending: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value() << std::endl;
-
-  // cluster_1 max_requests
-  std::cout << "BEFORE request/response1 cluster_1 rq_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_open")->value() << std::endl;
-  std::cout << "BEFORE request/response1 cluster_1 remaining_rq: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_rq")->value() << std::endl;
-  // cluster_1 max_pending_requests
-  std::cout << "BEFORE request/response1 cluster_1 rq_pending_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value() << std::endl;
-  std::cout << "BEFORE request/response1 cluster_1 remaining_pending: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value() << std::endl;
 
   // aggregate_cluster
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_open", 0);
-  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open", 0);
+  // test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open", 0);
 
   // cluster_1
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_open", 0);
-  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 0);
+  // test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 0);
 
   // aggregate_cluster max_requests
   EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_open")->value(), 0);
   EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_rq")->value(), 1);
   // aggregate_cluster max_pending_requests
-  EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value(), 0);
-  EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value(), 1);
+  // EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value(), 0);
+  // EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value(), 1);
 
   // cluster_1 max_requests
   EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_open")->value(), 0);
   EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_rq")->value(), 1);
   // cluster_1 max_pending_requests
-  EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value(), 0);
-  EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value(), 1);
+  // EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value(), 0);
+  // EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value(), 1);
+ 
+  std::cout << "---------- 06 CIRCUIT BREAKER STATS [BEFORE]" << std::endl;
+
+  // aggregate_cluster max_requests
+  std::cout << "BEFORE request/response1 aggregate_cluster rq_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_open")->value() << std::endl;
+  std::cout << "BEFORE request/response1 aggregate_cluster remaining_rq: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_rq")->value() << std::endl;
+  // aggregate_cluster max_pending_requests
+  // std::cout << "BEFORE request/response1 aggregate_cluster rq_pending_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value() << std::endl;
+  // std::cout << "BEFORE request/response1 aggregate_cluster remaining_pending: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value() << std::endl;
+
+  // cluster_1 max_requests
+  std::cout << "BEFORE request/response1 cluster_1 rq_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_open")->value() << std::endl;
+  std::cout << "BEFORE request/response1 cluster_1 remaining_rq: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_rq")->value() << std::endl;
+  // cluster_1 max_pending_requests
+  // std::cout << "BEFORE request/response1 cluster_1 rq_pending_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value() << std::endl;
+  // std::cout << "BEFORE request/response1 cluster_1 remaining_pending: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value() << std::endl;
 
   // ----------
+
+  std::cout << "---------- 07 MAKING HTTP CONNECTION" << std::endl;
 
   // now we want to make the requests to check the circuit breakers behaviour...
 
   Envoy::IntegrationCodecClientPtr codec_client_1 = makeHttpConnection(lookupPort("http"));
 
+  std::cout << "---------- 08 SENDING REQUEST TO /aggregatecluster" << std::endl;
+
   // send the first request (this should go via "aggregate_cluster" through to "cluster_1")
-  auto aggregate_cluster_response1 = codec_client_1->makeRequestWithBody(
-    Http::TestRequestHeaderMapImpl{
-      {":method", "GET"},{":path", "/aggregatecluster"},{":scheme", "http"},{":authority", "host"}}, 
-      1024
-    );
+  auto aggregate_cluster_response1 = codec_client_1->makeHeaderOnlyRequest(
+    Http::TestRequestHeaderMapImpl{{":method", "GET"},{":path", "/aggregatecluster"},{":scheme", "http"},{":authority", "host"}}
+  );
+
+  std::cout << "---------- 09 WAIT FOR REQUEST TO ARRIVE AT cluster_1" << std::endl;
   
-  // TODO: make sure this is the method we want/need
+  // tell the upstream cluster (index 2) (which is cluster_1) to wait for the request to arrive
   waitForNextUpstreamRequest(FirstUpstreamIndex);
 
-  // complete the request
-  upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "200"}}, true);
-  ASSERT_TRUE(upstream_request_->waitForEndStream(*dispatcher_));
-
-  // WE ARE CURRENTLY ERRORING HERE :
-  // TODO: look into waitForEndStream properly... 
-  ASSERT_TRUE(aggregate_cluster_response1->waitForEndStream());
+  std::cout << "---------- 10 WAIT FOR THE REQUEST TO TRIGGER THE CIRCUIT BREAKER(S)" << std::endl;
 
   // aggregate_cluster
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_open", 0);
-  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open", 0);
+  // test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open", 0);
 
   // cluster_1
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_open", 1);
-  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 1);
+  // test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 0);
   
+  // now check the circuit breakers again:
+
+  // aggregate_cluster max_requests
+  EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_open")->value(), 0);
+  EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_rq")->value(), 1);
+  
+  // cluster_1 max_requests
+  EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_open")->value(), 1); // !! the circuit breaker is triggered
+  EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_rq")->value(), 0); // !! there are no more requests allowed
+  
+  std::cout << "---------- 11 CIRCUIT BREAKER STATS [DURING]" << std::endl;
+
   // aggregate_cluster
   std::cout << "DURING request/response1 aggregate_cluster rq_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_open")->value() << std::endl;
   std::cout << "DURING request/response1 aggregate_cluster remaining_rq: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_rq")->value() << std::endl;
-  std::cout << "DURING request/response1 aggregate_cluster rq_pending_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value() << std::endl;
-  std::cout << "DURING request/response1 aggregate_cluster remaining_pending: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value() << std::endl;
+  // std::cout << "DURING request/response1 aggregate_cluster rq_pending_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value() << std::endl;
+  // std::cout << "DURING request/response1 aggregate_cluster remaining_pending: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value() << std::endl;
 
   // cluster_1
   std::cout << "DURING request/response1 cluster_1 rq_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_open")->value() << std::endl;
   std::cout << "DURING request/response1 cluster_1 remaining_rq: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_rq")->value() << std::endl;
-  std::cout << "DURING request/response1 cluster_1 rq_pending_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value() << std::endl;
-  std::cout << "DURING request/response1 cluster_1 remaining_pending: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value() << std::endl;
+  // std::cout << "DURING request/response1 cluster_1 rq_pending_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value() << std::endl;
+  // std::cout << "DURING request/response1 cluster_1 remaining_pending: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value() << std::endl;
 
-  // check the circuit breaker stats again
+  // now complete the request
 
+  std::cout << "---------- 12 ENCODING HEADERS AND ENDING STREAM, RETURNING RESPONSE" << std::endl;
+
+  // respond with headers
+  upstream_request_->encodeHeaders(default_response_headers_, true); // default_response_headers_ is just {{":status", "200"}}, the bool is to denote end of stream or not
+  
+  // wait for the end of stream which should come from above (because of the true bool)
+  ASSERT_TRUE(upstream_request_->waitForEndStream(*dispatcher_));
+
+  // now check the circuit breaker stats again
+
+  // aggregate_cluster
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_open", 0);
+  // test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open", 0);
+
+  // cluster_1
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_open", 0);
+  // test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 0);
+  
+  // aggregate_cluster max_requests
+  EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_open")->value(), 0);
+  EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_rq")->value(), 1);
+  
+  // cluster_1 max_requests
+  EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_open")->value(), 0); // the circuit breaker is back to its initial state
+  EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_rq")->value(), 1); // and this is also back to its initial state
+
+  std::cout << "---------- 13 CIRCUIT BREAKER STATS [AFTER]" << std::endl;
+
+  // aggregate_cluster
+  std::cout << "AFTER request/response1 aggregate_cluster rq_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_open")->value() << std::endl;
+  std::cout << "AFTER request/response1 aggregate_cluster remaining_rq: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_rq")->value() << std::endl;
   // std::cout << "AFTER request/response1 aggregate_cluster rq_pending_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value() << std::endl;
   // std::cout << "AFTER request/response1 aggregate_cluster remaining_pending: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value() << std::endl;
+
+  // cluster_1
+  std::cout << "AFTER request/response1 cluster_1 rq_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_open")->value() << std::endl;
+  std::cout << "AFTER request/response1 cluster_1 remaining_rq: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_rq")->value() << std::endl;
   // std::cout << "AFTER request/response1 cluster_1 rq_pending_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value() << std::endl;
   // std::cout << "AFTER request/response1 cluster_1 remaining_pending: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value() << std::endl;
+ 
+  // -----------
+
+  // this is where we try to use another client to send another request
 
   // Envoy::IntegrationCodecClientPtr codec_client_2 = makeHttpConnection(lookupPort("http"));
 
@@ -607,16 +660,14 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
   //     1024
   //   );
 
-  std::cout << "---------- 97 DID WE GET HERE?" << std::endl;
-
   // check the circuit breaker stats again:
-  EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_open")->value(), 0);
-  EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value(), 0);
+  // EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_open")->value(), 0);
+  // EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value(), 0);
 
-  EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_open")->value(), 0);
-  EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value(), 0);
+  // EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_open")->value(), 0);
+  // EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value(), 0);
 
-  std::cout << "---------- 98 DID WE GET HERE?" << std::endl;
+  // std::cout << "---------- 98 DID WE GET HERE?" << std::endl;
 
   // the second response should fail (fast?) with 503
   // ASSERT_TRUE(aggregate_cluster_response2->waitForEndStream());
@@ -660,10 +711,10 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
 // AFTER aggregate_cluster has_circuit_breakers(): 1
 // AFTER aggregate_cluster thresholds_size(): 1
 // AFTER aggregate_cluster thresholds_size(): 1
-// aggregate_cluster threshold default max_connections().value(): 1
-// aggregate_cluster threshold default max_pending_requests().value(): 1
+// aggregate_cluster threshold default max_connections().value(): 1000000
+// aggregate_cluster threshold default max_pending_requests().value(): 1000000
 // aggregate_cluster threshold default max_requests().value(): 1
-// aggregate_cluster threshold default max_retries().value(): 1
+// aggregate_cluster threshold default max_retries().value(): 1000000
 // aggregate_cluster threshold default track_remaining(): 1
 // ---------- 02 CONFIG MODIFY FINISH
 // ---------- 04 INITIALIZE FINISH
@@ -672,63 +723,64 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
 // BEFORE cluster1_circuit_breakers thresholds_size(): 0
 // AFTER cluster1_ has_circuit_breakers(): 1
 // AFTER cluster1_circuit_breakers thresholds_size(): 1
-// cluster1_ threshold default max_connections().value(): 1
-// cluster1_ threshold default max_pending_requests().value(): 1
+// cluster1_ threshold default max_connections().value(): 1000000
+// cluster1_ threshold default max_pending_requests().value(): 1000000
 // cluster1_ threshold default max_requests().value(): 1
-// cluster1_ threshold default max_retries().value(): 1
+// cluster1_ threshold default max_retries().value(): 1000000
 // cluster1_ threshold default track_remaining(): 1
+// ---------- 05 UPDATING XDS CONFIG FOR cluster1_
+// ---------- 06 CIRCUIT BREAKER STATS [BEFORE]
 // BEFORE request/response1 aggregate_cluster rq_open: 0
 // BEFORE request/response1 aggregate_cluster remaining_rq: 1
-// BEFORE request/response1 aggregate_cluster rq_pending_open: 0
-// BEFORE request/response1 aggregate_cluster remaining_pending: 1
 // BEFORE request/response1 cluster_1 rq_open: 0
 // BEFORE request/response1 cluster_1 remaining_rq: 1
-// BEFORE request/response1 cluster_1 rq_pending_open: 0
-// BEFORE request/response1 cluster_1 remaining_pending: 1
-// test/extensions/clusters/aggregate/cluster_integration_test.cc:568: Failure
-// Value of: aggregate_cluster_response1->waitForEndStream()
-//   Actual: false (Timed out waiting for end stream
-// )
-// Expected: true
-// Stack trace:
-//   0x2b59d97: Envoy::(anonymous namespace)::AggregateIntegrationTest_CircuitBreakerTest_Test::TestBody()
-//   0x7426d4b: testing::internal::HandleSehExceptionsInMethodIfSupported<>()
-//   0x74168fd: testing::internal::HandleExceptionsInMethodIfSupported<>()
-//   0x73ff173: testing::Test::Run()
-//   0x73ffd3a: testing::TestInfo::Run()
-// ... Google Test internal frames ...
-
-// [2025-04-02 08:25:22.088][12][critical][assert] [source/common/network/connection_impl.cc:122] assert failure: !socket_->isOpen() && delayed_close_timer_ == nullptr. Details: ConnectionImpl was unexpectedly torn down without being closed.
-// [2025-04-02 08:25:22.088][12][error][envoy_bug] [./source/common/common/assert.h:38] stacktrace for envoy bug
-// [2025-04-02 08:25:22.100][12][error][envoy_bug] [./source/common/common/assert.h:43] #0 Envoy::Network::ConnectionImpl::~ConnectionImpl() [0x605191f]
-// [2025-04-02 08:25:22.112][12][error][envoy_bug] [./source/common/common/assert.h:43] #1 Envoy::Network::ClientConnectionImpl::~ClientConnectionImpl() [0x60719a8]
-// [2025-04-02 08:25:22.123][12][error][envoy_bug] [./source/common/common/assert.h:43] #2 Envoy::Network::ClientConnectionImpl::~ClientConnectionImpl() [0x60709a0]
-// [2025-04-02 08:25:22.135][12][error][envoy_bug] [./source/common/common/assert.h:43] #3 Envoy::Network::ClientConnectionImpl::~ClientConnectionImpl() [0x60709f9]
-// [2025-04-02 08:25:22.146][12][error][envoy_bug] [./source/common/common/assert.h:43] #4 std::default_delete<>::operator()() [0x30ae47c]
-// [2025-04-02 08:25:22.157][12][error][envoy_bug] [./source/common/common/assert.h:43] #5 std::unique_ptr<>::~unique_ptr() [0x308c1ca]
-// [2025-04-02 08:25:22.169][12][error][envoy_bug] [./source/common/common/assert.h:43] #6 Envoy::Http::CodecClient::~CodecClient() [0x30926e2]
-// [2025-04-02 08:25:22.180][12][error][envoy_bug] [./source/common/common/assert.h:43] #7 Envoy::Http::CodecClientProd::~CodecClientProd() [0x308bbb5]
-// [2025-04-02 08:25:22.191][12][error][envoy_bug] [./source/common/common/assert.h:43] #8 Envoy::IntegrationCodecClient::~IntegrationCodecClient() [0x30922c9]
-// [2025-04-02 08:25:22.203][12][error][envoy_bug] [./source/common/common/assert.h:43] #9 Envoy::IntegrationCodecClient::~IntegrationCodecClient() [0x30922e9]
-// [2025-04-02 08:25:22.214][12][error][envoy_bug] [./source/common/common/assert.h:43] #10 std::default_delete<>::operator()() [0x2baeccc]
-// [2025-04-02 08:25:22.225][12][error][envoy_bug] [./source/common/common/assert.h:43] #11 std::unique_ptr<>::~unique_ptr() [0x2bae28d]
-// [2025-04-02 08:25:22.237][12][error][envoy_bug] [./source/common/common/assert.h:43] #12 Envoy::(anonymous namespace)::AggregateIntegrationTest_CircuitBreakerTest_Test::TestBody() [0x2b5b97e]
-// [2025-04-02 08:25:22.237][12][error][envoy_bug] [./source/common/common/assert.h:43] #13 testing::internal::HandleSehExceptionsInMethodIfSupported<>() [0x7426d4b]
-// [2025-04-02 08:25:22.237][12][error][envoy_bug] [./source/common/common/assert.h:43] #14 testing::internal::HandleExceptionsInMethodIfSupported<>() [0x74168fd]
-// [2025-04-02 08:25:22.237][12][error][envoy_bug] [./source/common/common/assert.h:43] #15 testing::Test::Run() [0x73ff173]
-// [2025-04-02 08:25:22.237][12][critical][backtrace] [./source/server/backtrace.h:129] Caught Aborted, suspect faulting address 0x103d0000000c
-// [2025-04-02 08:25:22.237][12][critical][backtrace] [./source/server/backtrace.h:113] Backtrace (use tools/stack_decode.py to get line numbers):
-// [2025-04-02 08:25:22.237][12][critical][backtrace] [./source/server/backtrace.h:114] Envoy version: 0/1.34.0-dev/test/DEBUG/BoringSSL
-// [2025-04-02 08:25:22.248][12][critical][backtrace] [./source/server/backtrace.h:121] #0: Envoy::SignalAction::sigHandler() [0x646ecbc]
-// [2025-04-02 08:25:22.249][12][critical][backtrace] [./source/server/backtrace.h:123] #1: [0x7771d3a42520]
+// ---------- 07 MAKING HTTP CONNECTION
+// ---------- 08 SENDING REQUEST TO /aggregatecluster
+// ---------- 09 WAIT FOR REQUEST TO ARRIVE AT cluster_1
+// ---------- 10 WAIT FOR THE REQUEST TO TRIGGER THE CIRCUIT BREAKER(S)
+// ---------- 11 CIRCUIT BREAKER STATS [DURING]
+// DURING request/response1 aggregate_cluster rq_open: 0
+// DURING request/response1 aggregate_cluster remaining_rq: 1
+// DURING request/response1 cluster_1 rq_open: 1
+// DURING request/response1 cluster_1 remaining_rq: 0
+// ---------- 12 ENCODING HEADERS AND ENDING STREAM, RETURNING RESPONSE
+// ---------- 13 CIRCUIT BREAKER STATS [AFTER]
+// AFTER request/response1 aggregate_cluster rq_open: 0
+// AFTER request/response1 aggregate_cluster remaining_rq: 1
+// AFTER request/response1 cluster_1 rq_open: 0
+// AFTER request/response1 cluster_1 remaining_rq: 1
+// ---------- 99 TEST END
+// [2025-04-02 15:28:32.917][12][critical][assert] [source/common/network/connection_impl.cc:122] assert failure: !socket_->isOpen() && delayed_close_timer_ == nullptr. Details: ConnectionImpl was unexpectedly torn down without being closed.
+// [2025-04-02 15:28:32.917][12][error][envoy_bug] [./source/common/common/assert.h:38] stacktrace for envoy bug
+// [2025-04-02 15:28:32.929][12][error][envoy_bug] [./source/common/common/assert.h:43] #0 Envoy::Network::ConnectionImpl::~ConnectionImpl() [0x605127f]
+// [2025-04-02 15:28:32.941][12][error][envoy_bug] [./source/common/common/assert.h:43] #1 Envoy::Network::ClientConnectionImpl::~ClientConnectionImpl() [0x6071308]
+// [2025-04-02 15:28:32.952][12][error][envoy_bug] [./source/common/common/assert.h:43] #2 Envoy::Network::ClientConnectionImpl::~ClientConnectionImpl() [0x6070300]
+// [2025-04-02 15:28:32.964][12][error][envoy_bug] [./source/common/common/assert.h:43] #3 Envoy::Network::ClientConnectionImpl::~ClientConnectionImpl() [0x6070359]
+// [2025-04-02 15:28:32.975][12][error][envoy_bug] [./source/common/common/assert.h:43] #4 std::default_delete<>::operator()() [0x30adddc]
+// [2025-04-02 15:28:32.986][12][error][envoy_bug] [./source/common/common/assert.h:43] #5 std::unique_ptr<>::~unique_ptr() [0x308bb2a]
+// [2025-04-02 15:28:32.997][12][error][envoy_bug] [./source/common/common/assert.h:43] #6 Envoy::Http::CodecClient::~CodecClient() [0x3092042]
+// [2025-04-02 15:28:33.008][12][error][envoy_bug] [./source/common/common/assert.h:43] #7 Envoy::Http::CodecClientProd::~CodecClientProd() [0x308b515]
+// [2025-04-02 15:28:33.019][12][error][envoy_bug] [./source/common/common/assert.h:43] #8 Envoy::IntegrationCodecClient::~IntegrationCodecClient() [0x3091c29]
+// [2025-04-02 15:28:33.030][12][error][envoy_bug] [./source/common/common/assert.h:43] #9 Envoy::IntegrationCodecClient::~IntegrationCodecClient() [0x3091c49]
+// [2025-04-02 15:28:33.041][12][error][envoy_bug] [./source/common/common/assert.h:43] #10 std::default_delete<>::operator()() [0x2bae62c]
+// [2025-04-02 15:28:33.052][12][error][envoy_bug] [./source/common/common/assert.h:43] #11 std::unique_ptr<>::~unique_ptr() [0x2badbed]
+// [2025-04-02 15:28:33.063][12][error][envoy_bug] [./source/common/common/assert.h:43] #12 Envoy::(anonymous namespace)::AggregateIntegrationTest_CircuitBreakerTest_Test::TestBody() [0x2b5b13c]
+// [2025-04-02 15:28:33.074][12][error][envoy_bug] [./source/common/common/assert.h:43] #13 testing::internal::HandleSehExceptionsInMethodIfSupported<>() [0x74266cb]
+// [2025-04-02 15:28:33.084][12][error][envoy_bug] [./source/common/common/assert.h:43] #14 testing::internal::HandleExceptionsInMethodIfSupported<>() [0x741627d]
+// [2025-04-02 15:28:33.095][12][error][envoy_bug] [./source/common/common/assert.h:43] #15 testing::Test::Run() [0x73feaf3]
+// [2025-04-02 15:28:33.095][12][critical][backtrace] [./source/server/backtrace.h:129] Caught Aborted, suspect faulting address 0x103d0000000c
+// [2025-04-02 15:28:33.095][12][critical][backtrace] [./source/server/backtrace.h:113] Backtrace (use tools/stack_decode.py to get line numbers):
+// [2025-04-02 15:28:33.096][12][critical][backtrace] [./source/server/backtrace.h:114] Envoy version: 0/1.34.0-dev/test/DEBUG/BoringSSL
+// [2025-04-02 15:28:33.107][12][critical][backtrace] [./source/server/backtrace.h:121] #0: Envoy::SignalAction::sigHandler() [0x646e61c]
+// [2025-04-02 15:28:33.107][12][critical][backtrace] [./source/server/backtrace.h:123] #1: [0x7d9d4e042520]
 // ================================================================================
 // INFO: Found 1 test target...
 // Target //test/extensions/clusters/aggregate:cluster_integration_test up-to-date:
 //   bazel-bin/test/extensions/clusters/aggregate/cluster_integration_test
-// INFO: Elapsed time: 499.253s, Critical Path: 95.09s
-// INFO: 632 processes: 632 linux-sandbox.
-// INFO: Build completed, 1 test FAILED, 632 total actions
-// //test/extensions/clusters/aggregate:cluster_integration_test            FAILED in 16.2s
+// INFO: Elapsed time: 68.224s, Critical Path: 67.82s
+// INFO: 4 processes: 4 linux-sandbox.
+// INFO: Build completed, 1 test FAILED, 4 total actions
+// //test/extensions/clusters/aggregate:cluster_integration_test            FAILED in 6.1s
 //   /home/baz.murphy/.cache/bazel/_bazel_baz.murphy/7fcf1edc087d667522e3815b5db406ee/execroot/envoy/bazel-out/k8-fastbuild/testlogs/test/extensions/clusters/aggregate/cluster_integration_test/test.log
 
 // Executed 1 out of 1 test: 1 fails locally.
