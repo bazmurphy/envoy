@@ -966,7 +966,98 @@ void BaseIntegrationTest::createEnvoy() {
   createGeneratedApiTestServer(bootstrap_path, named_ports, {false, true, false}, false);
 }
 
+// ----------
 
+// Look into the "config_helper"
+
+// test/integration/base_integration_test.h
+
+// config_helper_ is a "protected" member variable on the BaseIntegrationTest class
+
+// The config for envoy start-up.
+ConfigHelper config_helper_;
+
+// test/config/utility.h
+class ConfigHelper
+
+// it has a "private:" member variable "config_modifiers_"
+// which is a vector of config modifier functions
+
+// test/config/utility.h
+// The config modifiers added via addConfigModifier() which will be applied in finalize()
+std::vector<ConfigModifierFunction> config_modifiers_;
+
+// a ConfigModifierFunction is a function that takes in a bootstrap config returns nothing (and presumably modifies the bootstrap config):
+
+// test/config/utility.h
+using ConfigModifierFunction = std::function<void(envoy::config::bootstrap::v3::Bootstrap&)>;
+
+// the addConfigModifier method has 3 variants, the one we are interested in is:
+
+// test/config/utility.h
+// Allows callers to do their own modification to |bootstrap_| which will be
+// applied just before ports are modified in finalize().
+void addConfigModifier(ConfigModifierFunction function);
+
+// test/config/utility.cc
+void ConfigHelper::addConfigModifier(ConfigModifierFunction function) {
+  RELEASE_ASSERT(!finalized_, "");
+  config_modifiers_.push_back(std::move(function));
+}
+
+// finalze() is what executes the ConfigModifierFunction(s)
+
+// test/config/utility.h
+
+// Run the final config modifiers, and then set the upstream ports based on upstream connections.
+// This is the last operation run on |bootstrap_| before it is handed to Envoy.
+// Ports are assigned by looping through clusters, hosts, and addresses in the
+// order they are stored in |bootstrap_|
+void finalize(const std::vector<uint32_t>& ports);
+
+// test/config/utility.cc
+void ConfigHelper::finalize(const std::vector<uint32_t>& ports) {
+  RELEASE_ASSERT(!finalized_, "");
+
+  applyConfigModifiers();
+
+  setPorts(ports);
+
+  if (!connect_timeout_set_) {
+#ifdef __APPLE__
+    // Set a high default connect timeout. Under heavy load (and in particular in CI), macOS
+    // connections can take inordinately long to complete.
+    setConnectTimeout(std::chrono::seconds(30));
+#else
+    // Set a default connect timeout.
+    setConnectTimeout(std::chrono::seconds(5));
+#endif
+  }
+
+  // Make sure we don't setAsyncLb() when we intend to use a non-default LB algorithm.
+  for (int i = 0; i < bootstrap_.mutable_static_resources()->clusters_size(); ++i) {
+    auto* cluster = bootstrap_.mutable_static_resources()->mutable_clusters(i);
+    if (cluster->has_load_balancing_policy() &&
+        cluster->load_balancing_policy().policies(0).typed_extension_config().name() ==
+            "envoy.load_balancing_policies.async_round_robin") {
+      ASSERT_EQ(::envoy::config::cluster::v3::Cluster::ROUND_ROBIN, cluster->lb_policy());
+    }
+  }
+
+  finalized_ = true;
+}
+
+// test/config/utility.h
+// Allow a finalized configuration to be edited for generating xDS responses
+void applyConfigModifiers();
+
+// test/config/utility.cc
+void ConfigHelper::applyConfigModifiers() {
+  for (const auto& config_modifier : config_modifiers_) {
+    config_modifier(bootstrap_);
+  }
+  config_modifiers_.clear();
+}
 
 // ----------
 
