@@ -563,6 +563,10 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
   // TODO: make sure this is the method we want/need
   waitForNextUpstreamRequest(FirstUpstreamIndex);
 
+  // complete the request
+  upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "200"}}, true);
+  ASSERT_TRUE(upstream_request_->waitForEndStream(*dispatcher_));
+
   // WE ARE CURRENTLY ERRORING HERE :
   // TODO: look into waitForEndStream properly... 
   ASSERT_TRUE(aggregate_cluster_response1->waitForEndStream());
@@ -586,8 +590,6 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
   std::cout << "DURING request/response1 cluster_1 remaining_rq: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_rq")->value() << std::endl;
   std::cout << "DURING request/response1 cluster_1 rq_pending_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value() << std::endl;
   std::cout << "DURING request/response1 cluster_1 remaining_pending: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value() << std::endl;
-
-  // complete the request
 
   // check the circuit breaker stats again
 
