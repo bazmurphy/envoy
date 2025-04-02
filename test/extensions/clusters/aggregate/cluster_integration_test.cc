@@ -141,12 +141,6 @@ public:
     config_helper_.addConfigModifier([this](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
       bootstrap.mutable_cluster_manager()->set_enable_deferred_cluster_creation(
           deferred_cluster_creation_);
-
-      // this is to able to track the remaining circuit breaker stats for the aggregate cluster
-      // auto* static_resources = bootstrap.mutable_static_resources();
-      // auto* cluster = static_resources->mutable_clusters(1);
-      // auto* threshold = cluster->mutable_circuit_breakers()->mutable_thresholds()->Add();
-      // threshold->set_track_remaining(true);
     });
     HttpIntegrationTest::initialize();
 
