@@ -686,7 +686,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
 
   // --------------------
 
-  // send request2
+  // send the first request to /aggregatecluster
   auto aggregate_cluster_response2 = codec_client_->makeHeaderOnlyRequest(
     Http::TestRequestHeaderMapImpl{{":method", "GET"},{":path", "/aggregatecluster"},{":scheme", "http"},{":authority", "host"}}
   );
@@ -694,31 +694,47 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
   // tell the upstream cluster (index 2) (which is cluster_1) to wait for the request2 to arrive
   waitForNextUpstreamRequest(FirstUpstreamIndex);
 
-  // send request3
+  // send the second request to /aggregatecluster
   auto aggregate_cluster_response3 = codec_client_->makeHeaderOnlyRequest(
     Http::TestRequestHeaderMapImpl{{":method", "GET"},{":path", "/aggregatecluster"},{":scheme", "http"},{":authority", "host"}}
   );
 
-  // wait for response3 to complete/return to the client
+  // wait for the response to complete and return to the client
   ASSERT_TRUE(aggregate_cluster_response3->waitForEndStream());
 
-  // check the status of the response is 503 (because the circuit breaker is triggered and so the request was rejected)
+  // check the status of the response is 503 (because the circuit breaker is triggered and so the request to /aggregatecluster was rejected)
   EXPECT_EQ("503", aggregate_cluster_response3->headers().getStatusValue());
   std::cout << "aggregate_cluster_response3 headers().getStatusValue(): " << aggregate_cluster_response3->headers().getStatusValue() << std::endl;
 
-  // complete request2 (from the pov of the upstream)
+  // check the upstream_rq_pending_overflow counters:
+  EXPECT_EQ(test_server_->counter("cluster.aggregate_cluster.upstream_rq_pending_overflow")->value(), 0);
+  EXPECT_EQ(test_server_->counter("cluster.cluster_1.upstream_rq_pending_overflow")->value(), 1); // the overflow is 1 because the circuit breaker rejected the request
+
+  // send the first request to /cluster1
+  auto cluster1_response1 = codec_client_->makeHeaderOnlyRequest(
+    Http::TestRequestHeaderMapImpl{{":method", "GET"},{":path", "/cluster1"},{":scheme", "http"},{":authority", "host"}}
+  );
+
+  // wait for cluster1 response to complete and return to the client
+  ASSERT_TRUE(cluster1_response1->waitForEndStream());
+
+  // check the status of the response is 503 (because the circuit breaker is triggered and so the request to /cluster1 was rejected)
+  EXPECT_EQ("503", cluster1_response1->headers().getStatusValue());
+  std::cout << "cluster1_response1 headers().getStatusValue(): " << cluster1_response1->headers().getStatusValue() << std::endl;
+
+  // check the upstream_rq_pending_overflow counters:
+  EXPECT_EQ(test_server_->counter("cluster.aggregate_cluster.upstream_rq_pending_overflow")->value(), 0);
+  EXPECT_EQ(test_server_->counter("cluster.cluster_1.upstream_rq_pending_overflow")->value(), 2); // the overflow is now 2
+
+  // allow the first request to have its header encoded
   upstream_request_->encodeHeaders(default_response_headers_, true);
 
-  // wait for response2 to complete/return to the client
+  // wait for the response to complete and return to the client
   ASSERT_TRUE(aggregate_cluster_response2->waitForEndStream());
 
   // check the status of the response is 200
   EXPECT_EQ("200", aggregate_cluster_response2->headers().getStatusValue());
   std::cout << "aggregate_cluster_response2 headers().getStatusValue(): " << aggregate_cluster_response2->headers().getStatusValue() << std::endl;
-
-  // check the upstream_rq_pending_overflow counters:
-  EXPECT_EQ(test_server_->counter("cluster.aggregate_cluster.upstream_rq_pending_overflow")->value(), 0);
-  EXPECT_EQ(test_server_->counter("cluster.cluster_1.upstream_rq_pending_overflow")->value(), 1); // there was an overflow because the circuit breaker rejected the request
 
   std::cout << "aggregate_cluster upstream_rq_pending_overflow: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_pending_overflow")->value() << std::endl;
   std::cout << "cluster_1 upstream_rq_pending_overflow: " << test_server_->counter("cluster.cluster_1.upstream_rq_pending_overflow")->value() << std::endl;
