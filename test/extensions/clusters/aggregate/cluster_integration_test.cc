@@ -304,58 +304,85 @@ TEST_P(AggregateIntegrationTest, PreviousPrioritiesRetryPredicate) {
   cleanupUpstreamAndDownstream();
 }
 
+// --------------------
+
 // TEST PLAN
 
 // 1. setup the two circuit breakers
 //    - one at the aggregate_cluster level
 //    - one at cluster1 level
-// and then we can confirm that the aggregate_cluster circuit breaker does not get used [this WILL get used for "retries" because i believe that mechanic lives there]
+// and then we can confirm that the aggregate_cluster circuit breaker does not get used [EXCEPT for retries]
 
-// 2. send one request through to /aggregate_cluster (and prevent it from completing)
+// 2. send request1 through to /aggregate_cluster (and prevent it from completing)
 
 // 3. check the circuit breaker states
-//    - aggregate_cluster should be 0 (default or normal state == "closed")
-//    - cluster1 should be 1 (which means triggered == "open")
+//    - aggregate_cluster should be 0 (normal state == "closed")
+//    - cluster1 should be 1 (triggered state == "open")
 
-// 4. send another request through (and prevent it from completing) 
-//    - this request should fail
+// 4. send request2 through 
+//    - this request should automatically fail
 
-// 5. send another request but this time directly to the /cluster1 route
-//    - this request should also fail (because the cluster1 circuit breaker is 1 (open))
+// (5. send request3 through directly to /cluster1 at the same time as request2)
+// (   - this request should also automatically fail)
 
+// --------------------
 
-// STATS NAMES :
+// https://www.envoyproxy.io/docs/envoy/latest/configuration/upstream/cluster_manager/cluster_stats#circuit-breakers-statistics 
 
-// cx_open  - connections circuit breaker
-// cx_pool_open - connection pool circuit breaker
-// rq_open - request circuit breaker
-// rq_pending_open - pending request circuit breaker
-// rq_retry_open - request retry circuit breaker
+// STATS OF INTEREST 
+
+// CIRCUIT BREAKER
+
+// cx_open (Gauge) - Whether the connection circuit breaker is under its concurrency limit (0) or is at capacity and no longer admitting (1)
+// cx_pool_open (Gauge) - Whether the connection pool circuit breaker is under its concurrency limit (0) or is at capacity and no longer admitting (1)
+// rq_pending_open (Gauge) - Whether the pending requests circuit breaker is under its concurrency limit (0) or is at capacity and no longer admitting (1)
+// rq_open (Gauge) - Whether the requests circuit breaker is under its concurrency limit (0) or is at capacity and no longer admitting (1)
+// rq_retry_open (Gauge) - Whether the retry circuit breaker is under its concurrency limit (0) or is at capacity and no longer admitting (1)
 
 // cluster.aggregate_cluster.circuit_breakers.default.cx_open
 // cluster.aggregate_cluster.circuit_breakers.default.cx_pool_open
-// cluster.aggregate_cluster.circuit_breakers.default.rq_open
 // cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open
+// cluster.aggregate_cluster.circuit_breakers.default.rq_open
 // cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open
 
-// remaining_cx - remaining connections
-// remaining_cx_pools - remaining connection pools
-// remaing_pending - remaining pending requests
-// remaining_retries - remaining (request) retries
-// remaing_req - remaining requests
+// REMAINING
+
+// remaining_cx (Gauge) - Number of remaining connections until the circuit breaker reaches its concurrency limit
+// remaining_pending (Gauge) - Number of remaining pending requests until the circuit breaker reaches its concurrency limit
+// remaining_rq (Gauge) - Number of remaining requests until the circuit breaker reaches its concurrency limit
+// remaining_retries (Gauge) - Number of remaining retries until the circuit breaker reaches its concurrency limit
 
 // cluster.aggregate_cluster.circuit_breakers.default.remaining_cx
-// cluster.aggregate_cluster.circuit_breakers.default.remaining_cx_pools
 // cluster.aggregate_cluster.circuit_breakers.default.remaining_pending
-// cluster.aggregate_cluster.circuit_breakers.default.remaining_retries
 // cluster.aggregate_cluster.circuit_breakers.default.remaining_rq
+// cluster.aggregate_cluster.circuit_breakers.default.remaining_retries
+
+// OVERFLOW
+
+// upstream_cx_overflow (Counter) - Total times that the cluster’s connection circuit breaker overflowed
+// upstream_cx_pool_overflow (Counter) - Total times that the cluster’s connection pool circuit breaker overflowed
+// upstream_rq_pending_overflow (Counter) - Total requests that overflowed connection pool or requests (mainly for HTTP/2 and above) circuit breaking and were failed
+// upstream_rq_retry_overflow (Counter) - Total requests not retried due to circuit breaking or exceeding the retry budget
+
+// cluster.aggregate_cluster.upstream_rq_pending_overflow
+// cluster.aggregate_cluster.upstream_cx_pool_overflow
+// cluster.aggregate_cluster.upstream_rq_pending_overflow
+// cluster.aggregate_cluster.upstream_rq_retry_overflow
+
+// --------------------
 
 TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
   std::cout << "---------- 00 TEST START" << std::endl;
 
+  // let's specifically use http2 on the downstream client
+  // so that we can use the single code_client_ to send many requests (and don't have to create multiple codec_clients_ if we were using http1.1)
+  setDownstreamProtocol(Http::CodecType::HTTP2);
+
   // this is how we can modify the config (from the top of this file) before calling "initialize()"
   config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
     std::cout << "---------- 01 CONFIG MODIFY START" << std::endl;
+
+    // --------------------
 
     // we want to access the "static_resources" to modify the "aggregate_cluster"
 
@@ -366,7 +393,8 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
     auto* aggregate_cluster = static_resources->mutable_clusters(1);
     std::cout << "aggregate_cluster name(): " << aggregate_cluster->name() << std::endl;
 
-    // ---------
+    // --------------------
+
     // we want to reduce the "aggregate_cluster" "clusters" list down to just "cluster_1" (and therefore remove "cluster_2") so we can control our tests
     // because "aggregate_cluster" is in "static_resources" not in "dynamic_resources" this is a bit more fiddly    
 
@@ -399,9 +427,9 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
     // re-pack the adjusted config back
     aggregate_cluster_typed_config->PackFrom(temp_aggregate_cluster_typed_config);
 
-    // ---------
+    // --------------------
   
-    // now we want to set the circuit breaker configuration on the aggregate cluster
+    // we want to set the circuit breaker configuration on the aggregate cluster
 
     std::cout << "BEFORE aggregate_cluster has_circuit_breakers(): " << aggregate_cluster->has_circuit_breakers() << std::endl;
 
@@ -436,22 +464,21 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
     std::cout << "aggregate_cluster threshold default max_pending_requests().value(): " << aggregate_cluster_circuit_breakers_threshold_default->max_pending_requests().value() << std::endl;
     std::cout << "aggregate_cluster threshold default max_requests().value(): " << aggregate_cluster_circuit_breakers_threshold_default->max_requests().value() << std::endl;
     std::cout << "aggregate_cluster threshold default max_retries().value(): " << aggregate_cluster_circuit_breakers_threshold_default->max_retries().value() << std::endl;
-    // check the "track_remaining" value
     std::cout << "aggregate_cluster threshold default track_remaining(): " << aggregate_cluster_circuit_breakers_threshold_default->track_remaining() << std::endl;
 
-    // ---------
+    // --------------------
     std::cout << "---------- 02 CONFIG MODIFY FINISH" << std::endl;
   });
 
   std::cout << "---------- 03 INITIALIZE START" << std::endl;
 
-  // ---------
+  // --------------------
 
   // now call initialize (and that will add cluster_1 to the "dynamic_resources" > "clusters")
 
   initialize();
 
-  // ---------
+  // --------------------
 
   std::cout << "---------- 04 INITIALIZE FINISH" << std::endl;
 
@@ -486,7 +513,6 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
   std::cout << "cluster1_ threshold default max_pending_requests().value(): " << cluster1_circuit_breakers_threshold_default->max_pending_requests().value() << std::endl;
   std::cout << "cluster1_ threshold default max_requests().value(): " << cluster1_circuit_breakers_threshold_default->max_requests().value() << std::endl;
   std::cout << "cluster1_ threshold default max_retries().value(): " << cluster1_circuit_breakers_threshold_default->max_retries().value() << std::endl;
-  // check the "track_remaining" value
   std::cout << "cluster1_ threshold default track_remaining(): " << cluster1_circuit_breakers_threshold_default->track_remaining() << std::endl;
 
   // std::cout << "cluster1_ threshold high max_connections().value(): " << cluster1_circuit_breakers_threshold_high->max_connections().value() << std::endl;
@@ -494,7 +520,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
   // std::cout << "cluster1_ threshold high max_requests().value(): " << cluster1_circuit_breakers_threshold_high->max_requests().value() << std::endl;
   // std::cout << "cluster1_ threshold high max_retries().value(): " << cluster1_circuit_breakers_threshold_high->max_retries().value() << std::endl;
 
-  // ----------
+  // --------------------
 
   std::cout << "---------- 05 UPDATING XDS CONFIG FOR cluster1_" << std::endl;
 
@@ -505,13 +531,16 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
 
   sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster, {cluster1_}, {cluster1_}, {}, "56");
 
+  // make sure we still only have 3 clusters: "my_cds_cluster" [0], "aggregate_cluster" [1], "cluster_1" [2]
+  test_server_->waitForGaugeEq("cluster_manager.active_clusters", 3);
+
   // wait to make sure the cluster_1 "remaining" gauges are ready
   test_server_->waitForGaugeGe("cluster.cluster_1.circuit_breakers.default.remaining_rq", 0);
   test_server_->waitForGaugeGe("cluster.cluster_1.circuit_breakers.default.remaining_pending", 0);
 
-  // ----------
+  // --------------------
 
-  // check the initial circuit breaker stats:
+  // check the initial circuit breaker stats
 
   // aggregate_cluster
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_open", 0);
@@ -551,18 +580,18 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
   // std::cout << "BEFORE request/response1 cluster_1 rq_pending_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value() << std::endl;
   // std::cout << "BEFORE request/response1 cluster_1 remaining_pending: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value() << std::endl;
 
-  // ----------
+  // --------------------
 
   std::cout << "---------- 07 MAKING HTTP CONNECTION" << std::endl;
 
   // now we want to make the requests to check the circuit breakers behaviour...
 
-  Envoy::IntegrationCodecClientPtr codec_client_1 = makeHttpConnection(lookupPort("http"));
+  Envoy::IntegrationCodecClientPtr codec_client_ = makeHttpConnection(lookupPort("http"));
 
   std::cout << "---------- 08 SENDING REQUEST TO /aggregatecluster" << std::endl;
 
   // send the first request (this should go via "aggregate_cluster" through to "cluster_1")
-  auto aggregate_cluster_response1 = codec_client_1->makeHeaderOnlyRequest(
+  auto aggregate_cluster_response1 = codec_client_->makeHeaderOnlyRequest(
     Http::TestRequestHeaderMapImpl{{":method", "GET"},{":path", "/aggregatecluster"},{":scheme", "http"},{":authority", "host"}}
   );
 
@@ -647,7 +676,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
   // std::cout << "AFTER request/response1 cluster_1 rq_pending_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value() << std::endl;
   // std::cout << "AFTER request/response1 cluster_1 remaining_pending: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value() << std::endl;
  
-  // -----------
+  // --------------------
   
   std::cout << "---------- 14 WAIT FOR RESPONSE END OF STREAM AND CHECK FOR 200" << std::endl;
 
@@ -655,60 +684,58 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
 
   EXPECT_EQ("200", aggregate_cluster_response1->headers().getStatusValue());
 
-  // ----------
+  // --------------------
 
-  // TEST 2
-  // use two clients, send two requests, the first will trip the circuit breaker, the second will get auto-rejected because the circuit breaker is tripped
-
-  // send request2 from client1
-  auto aggregate_cluster_response2 = codec_client_1->makeHeaderOnlyRequest(
+  // send request2
+  auto aggregate_cluster_response2 = codec_client_->makeHeaderOnlyRequest(
     Http::TestRequestHeaderMapImpl{{":method", "GET"},{":path", "/aggregatecluster"},{":scheme", "http"},{":authority", "host"}}
   );
 
   // tell the upstream cluster (index 2) (which is cluster_1) to wait for the request2 to arrive
   waitForNextUpstreamRequest(FirstUpstreamIndex);
 
-  // make another client
-  Envoy::IntegrationCodecClientPtr codec_client_2 = makeHttpConnection(lookupPort("http"));
-
-  // send request3 from client2
-  auto aggregate_cluster_response3 = codec_client_2->makeHeaderOnlyRequest(
+  // send request3
+  auto aggregate_cluster_response3 = codec_client_->makeHeaderOnlyRequest(
     Http::TestRequestHeaderMapImpl{{":method", "GET"},{":path", "/aggregatecluster"},{":scheme", "http"},{":authority", "host"}}
   );
 
-  // wait for response3 to complete
+  // wait for response3 to complete/return to the client
   ASSERT_TRUE(aggregate_cluster_response3->waitForEndStream());
 
-  // check the status is 503 (because the circuit breaker is open and so it is automatically rejected)
+  // check the status of the response is 503 (because the circuit breaker is triggered and so the request was rejected)
   EXPECT_EQ("503", aggregate_cluster_response3->headers().getStatusValue());
   std::cout << "aggregate_cluster_response3 headers().getStatusValue(): " << aggregate_cluster_response3->headers().getStatusValue() << std::endl;
 
-  // complete request2
+  // complete request2 (from the pov of the upstream)
   upstream_request_->encodeHeaders(default_response_headers_, true);
 
-  // wait for response2 to complete
+  // wait for response2 to complete/return to the client
   ASSERT_TRUE(aggregate_cluster_response2->waitForEndStream());
 
-  // check the status is 200
+  // check the status of the response is 200
   EXPECT_EQ("200", aggregate_cluster_response2->headers().getStatusValue());
   std::cout << "aggregate_cluster_response2 headers().getStatusValue(): " << aggregate_cluster_response2->headers().getStatusValue() << std::endl;
 
   // check the upstream_rq_pending_overflow counters:
   EXPECT_EQ(test_server_->counter("cluster.aggregate_cluster.upstream_rq_pending_overflow")->value(), 0);
-  EXPECT_EQ(test_server_->counter("cluster.cluster_1.upstream_rq_pending_overflow")->value(), 1);
+  EXPECT_EQ(test_server_->counter("cluster.cluster_1.upstream_rq_pending_overflow")->value(), 1); // there was an overflow because the circuit breaker rejected the request
 
   std::cout << "aggregate_cluster upstream_rq_pending_overflow: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_pending_overflow")->value() << std::endl;
   std::cout << "cluster_1 upstream_rq_pending_overflow: " << test_server_->counter("cluster.cluster_1.upstream_rq_pending_overflow")->value() << std::endl;
+  
+  // we can reset stats for subsequent tests if we need to
+  // test_server_->counter("cluster.cluster_1.upstream_rq_pending_overflow")->reset();
+  // std::cout << "RESET COUNTER TEST cluster_1 upstream_rq_pending_overflow: " << test_server_->counter("cluster.cluster_1.upstream_rq_pending_overflow")->value() << std::endl;
 
-  std::cout << "---------- 98 DID WE GET HERE?" << std::endl;
-
-  // because we have made custom clients and are not using the member variable "codec_client_"
-  // they don't get closed by cleanupUpstreamAndDownstream() and so we need to close them ourselves
-  codec_client_1->close();
-  codec_client_2->close();
+  // --------------------
 
   // "test requires explicit cleanupUpstreamAndDownstream"
   cleanupUpstreamAndDownstream();
+
+  // part of the purpose of cleanUpstreamAndDownstream() is to close the codec_client_ connection
+  // but this doesn't seem to work properly? why??
+  // for now let's do it manually...
+  codec_client_->close();
 
   std::cout << "---------- 99 TEST END" << std::endl;
 }
@@ -778,17 +805,22 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTest) {
 // aggregate_cluster_response2 headers().getStatusValue(): 200
 // aggregate_cluster upstream_rq_pending_overflow: 0
 // cluster_1 upstream_rq_pending_overflow: 1
-// ---------- 98 DID WE GET HERE?
 // ---------- 99 TEST END
 // [external/com_google_absl/absl/flags/internal/flag.cc : 140] RAW: Restore saved value of envoy_reloadable_features_runtime_initialized to: false
-// [external/com_google_absl/absl/flags/internal/flag.cc : 140] RAW: Restore saved value of envoy_quic_always_support_server_preferred_address to: true
 // [external/com_google_absl/absl/flags/internal/flag.cc : 140] RAW: Restore saved value of envoy_reloadable_features_no_extension_lookup_by_name to: true
-// [       OK ] IpVersions/AggregateIntegrationTest.CircuitBreakerTest/3 (412 ms)
-// [----------] 16 tests from IpVersions/AggregateIntegrationTest (6749 ms total)
+// [external/com_google_absl/absl/flags/internal/flag.cc : 140] RAW: Restore saved value of envoy_quic_always_support_server_preferred_address to: true
+// [       OK ] IpVersions/AggregateIntegrationTest.CircuitBreakerTest/3 (408 ms)
+// [----------] 16 tests from IpVersions/AggregateIntegrationTest (6727 ms total)
 
 // [----------] Global test environment tear-down
-// [==========] 16 tests from 1 test suite ran. (6749 ms total)
+// [==========] 16 tests from 1 test suite ran. (6727 ms total)
 // [  PASSED  ] 16 tests.
 // ================================================================================
+// INFO: Found 1 test target...
+// Target //test/extensions/clusters/aggregate:cluster_integration_test up-to-date:
+//   bazel-bin/test/extensions/clusters/aggregate/cluster_integration_test
+// INFO: Elapsed time: 67.735s, Critical Path: 67.47s
+// INFO: 4 processes: 1 internal, 3 linux-sandbox.
+// INFO: Build completed successfully, 4 total actions
 
-// Executed 0 out of 1 test: 1 test passes.
+// Executed 1 out of 1 test: 1 test passes.
