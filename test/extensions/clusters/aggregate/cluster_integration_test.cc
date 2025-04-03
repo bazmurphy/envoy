@@ -417,7 +417,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakingChildLimitLowerThanAggregateMaxP
       ->mutable_endpoint()
       ->mutable_address()
       ->mutable_socket_address()
-      ->set_address("192.0.2.1");
+      ->set_address("1.1.1.1");
 
   // Send the updated cluster via CDS
   sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster,
@@ -480,7 +480,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakingAggregateLimitLowerThanChildMaxP
       ->mutable_endpoint()
       ->mutable_address()
       ->mutable_socket_address()
-      ->set_address("192.0.2.1");
+      ->set_address("1.1.1.1");
 
   // Send the updated cluster via CDS
   sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster,
@@ -516,123 +516,121 @@ TEST_P(AggregateIntegrationTest, CircuitBreakingAggregateLimitLowerThanChildMaxP
   cleanupUpstreamAndDownstream();
 }
 
-// TEST_P(AggregateIntegrationTest, ClusterUpDownUp) {
-//   // Calls our initialize(), which includes establishing a listener, route, and cluster.
-//   testRouterHeaderOnlyRequestAndResponse(nullptr, FirstUpstreamIndex, "/aggregatecluster");
+TEST_P(AggregateIntegrationTest, ClusterUpDownUp) {
+  // Calls our initialize(), which includes establishing a listener, route, and cluster.
+  testRouterHeaderOnlyRequestAndResponse(nullptr, FirstUpstreamIndex, "/aggregatecluster");
 
-//   // Tell Envoy that cluster_1 is gone.
-//   EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "55", {}, {}, {}));
-//   sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster, {},
-//   {},
-//                                                              {FirstClusterName}, "42");
-//   // We can continue the test once we're sure that Envoy's ClusterManager has made use of
-//   // the DiscoveryResponse that says cluster_1 is gone.
-//   test_server_->waitForCounterGe("cluster_manager.cluster_removed", 1);
+  // Tell Envoy that cluster_1 is gone.
+  EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "55", {}, {}, {}));
+  sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster, {}, {},
+                                                             {FirstClusterName}, "42");
+  // We can continue the test once we're sure that Envoy's ClusterManager has made use of
+  // the DiscoveryResponse that says cluster_1 is gone.
+  test_server_->waitForCounterGe("cluster_manager.cluster_removed", 1);
 
-//   // Now that cluster_1 is gone, the listener (with its routing to cluster_1) should 503.
-//   BufferingStreamDecoderPtr response =
-//       IntegrationUtil::makeSingleRequest(lookupPort("http"), "GET", "/aggregatecluster", "",
-//                                          downstream_protocol_, version_, "foo.com");
-//   ASSERT_TRUE(response->complete());
-//   EXPECT_EQ("503", response->headers().getStatusValue());
+  // Now that cluster_1 is gone, the listener (with its routing to cluster_1) should 503.
+  BufferingStreamDecoderPtr response =
+      IntegrationUtil::makeSingleRequest(lookupPort("http"), "GET", "/aggregatecluster", "",
+                                         downstream_protocol_, version_, "foo.com");
+  ASSERT_TRUE(response->complete());
+  EXPECT_EQ("503", response->headers().getStatusValue());
 
-//   cleanupUpstreamAndDownstream();
-//   ASSERT_TRUE(codec_client_->waitForDisconnect());
+  cleanupUpstreamAndDownstream();
+  ASSERT_TRUE(codec_client_->waitForDisconnect());
 
-//   // Tell Envoy that cluster_1 is back.
-//   EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "42", {}, {}, {}));
-//   sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster,
-//                                                              {cluster1_}, {cluster1_}, {},
-//                                                              "413");
+  // Tell Envoy that cluster_1 is back.
+  EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "42", {}, {}, {}));
+  sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster,
+                                                             {cluster1_}, {cluster1_}, {}, "413");
 
-//   test_server_->waitForGaugeGe("cluster_manager.active_clusters", 3);
-//   testRouterHeaderOnlyRequestAndResponse(nullptr, FirstUpstreamIndex, "/aggregatecluster");
+  test_server_->waitForGaugeGe("cluster_manager.active_clusters", 3);
+  testRouterHeaderOnlyRequestAndResponse(nullptr, FirstUpstreamIndex, "/aggregatecluster");
 
-//   cleanupUpstreamAndDownstream();
-// }
+  cleanupUpstreamAndDownstream();
+}
 
-// // Tests adding a cluster, adding another, then removing the first.
-// TEST_P(AggregateIntegrationTest, TwoClusters) {
-//   // Calls our initialize(), which includes establishing a listener, route, and cluster.
-//   testRouterHeaderOnlyRequestAndResponse(nullptr, FirstUpstreamIndex, "/aggregatecluster");
+// Tests adding a cluster, adding another, then removing the first.
+TEST_P(AggregateIntegrationTest, TwoClusters) {
+  // Calls our initialize(), which includes establishing a listener, route, and cluster.
+  testRouterHeaderOnlyRequestAndResponse(nullptr, FirstUpstreamIndex, "/aggregatecluster");
 
-//   cleanupUpstreamAndDownstream();
-//   ASSERT_TRUE(codec_client_->waitForDisconnect());
+  cleanupUpstreamAndDownstream();
+  ASSERT_TRUE(codec_client_->waitForDisconnect());
 
-//   // Tell Envoy that cluster_2 is here.
-//   EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "55", {}, {}, {}));
-//   sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(
-//       Config::TypeUrl::get().Cluster, {cluster1_, cluster2_}, {cluster2_}, {}, "42");
-//   // The '4' includes the fake CDS server and aggregate cluster.
-//   test_server_->waitForGaugeGe("cluster_manager.active_clusters", 4);
+  // Tell Envoy that cluster_2 is here.
+  EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "55", {}, {}, {}));
+  sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(
+      Config::TypeUrl::get().Cluster, {cluster1_, cluster2_}, {cluster2_}, {}, "42");
+  // The '4' includes the fake CDS server and aggregate cluster.
+  test_server_->waitForGaugeGe("cluster_manager.active_clusters", 4);
 
-//   // A request for aggregate cluster should be fine.
-//   testRouterHeaderOnlyRequestAndResponse(nullptr, FirstUpstreamIndex, "/aggregatecluster");
-//   cleanupUpstreamAndDownstream();
-//   ASSERT_TRUE(codec_client_->waitForDisconnect());
+  // A request for aggregate cluster should be fine.
+  testRouterHeaderOnlyRequestAndResponse(nullptr, FirstUpstreamIndex, "/aggregatecluster");
+  cleanupUpstreamAndDownstream();
+  ASSERT_TRUE(codec_client_->waitForDisconnect());
 
-//   // Tell Envoy that cluster_1 is gone.
-//   EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "42", {}, {}, {}));
-//   sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(
-//       Config::TypeUrl::get().Cluster, {cluster2_}, {}, {FirstClusterName}, "43");
-//   // We can continue the test once we're sure that Envoy's ClusterManager has made use of
-//   // the DiscoveryResponse that says cluster_1 is gone.
-//   test_server_->waitForCounterGe("cluster_manager.cluster_removed", 1);
+  // Tell Envoy that cluster_1 is gone.
+  EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "42", {}, {}, {}));
+  sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(
+      Config::TypeUrl::get().Cluster, {cluster2_}, {}, {FirstClusterName}, "43");
+  // We can continue the test once we're sure that Envoy's ClusterManager has made use of
+  // the DiscoveryResponse that says cluster_1 is gone.
+  test_server_->waitForCounterGe("cluster_manager.cluster_removed", 1);
 
-//   testRouterHeaderOnlyRequestAndResponse(nullptr, SecondUpstreamIndex, "/aggregatecluster");
-//   cleanupUpstreamAndDownstream();
-//   ASSERT_TRUE(codec_client_->waitForDisconnect());
+  testRouterHeaderOnlyRequestAndResponse(nullptr, SecondUpstreamIndex, "/aggregatecluster");
+  cleanupUpstreamAndDownstream();
+  ASSERT_TRUE(codec_client_->waitForDisconnect());
 
-//   // Tell Envoy that cluster_1 is back.
-//   EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "43", {}, {}, {}));
-//   sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(
-//       Config::TypeUrl::get().Cluster, {cluster1_, cluster2_}, {cluster1_}, {}, "413");
+  // Tell Envoy that cluster_1 is back.
+  EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "43", {}, {}, {}));
+  sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(
+      Config::TypeUrl::get().Cluster, {cluster1_, cluster2_}, {cluster1_}, {}, "413");
 
-//   test_server_->waitForGaugeGe("cluster_manager.active_clusters", 4);
-//   testRouterHeaderOnlyRequestAndResponse(nullptr, FirstUpstreamIndex, "/aggregatecluster");
+  test_server_->waitForGaugeGe("cluster_manager.active_clusters", 4);
+  testRouterHeaderOnlyRequestAndResponse(nullptr, FirstUpstreamIndex, "/aggregatecluster");
 
-//   cleanupUpstreamAndDownstream();
-// }
+  cleanupUpstreamAndDownstream();
+}
 
-// // Test that the PreviousPriorities retry predicate works as expected. It is configured
-// // in this test to exclude a priority after a single failure, so the first failure
-// // on cluster_1 results in the retry going to cluster_2.
-// TEST_P(AggregateIntegrationTest, PreviousPrioritiesRetryPredicate) {
-//   initialize();
+// Test that the PreviousPriorities retry predicate works as expected. It is configured
+// in this test to exclude a priority after a single failure, so the first failure
+// on cluster_1 results in the retry going to cluster_2.
+TEST_P(AggregateIntegrationTest, PreviousPrioritiesRetryPredicate) {
+  initialize();
 
-//   // Tell Envoy that cluster_2 is here.
-//   sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(
-//       Config::TypeUrl::get().Cluster, {cluster1_, cluster2_}, {cluster2_}, {}, "42");
-//   // The '4' includes the fake CDS server and aggregate cluster.
-//   test_server_->waitForGaugeGe("cluster_manager.active_clusters", 4);
+  // Tell Envoy that cluster_2 is here.
+  sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(
+      Config::TypeUrl::get().Cluster, {cluster1_, cluster2_}, {cluster2_}, {}, "42");
+  // The '4' includes the fake CDS server and aggregate cluster.
+  test_server_->waitForGaugeGe("cluster_manager.active_clusters", 4);
 
-//   codec_client_ = makeHttpConnection(lookupPort("http"));
-//   auto response = codec_client_->makeRequestWithBody(
-//       Http::TestRequestHeaderMapImpl{{":method", "GET"},
-//                                      {":path", "/aggregatecluster"},
-//                                      {":scheme", "http"},
-//                                      {":authority", "host"},
-//                                      {"x-forwarded-for", "10.0.0.1"},
-//                                      {"x-envoy-retry-on", "5xx"}},
-//       1024);
-//   waitForNextUpstreamRequest(FirstUpstreamIndex);
-//   upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, false);
+  codec_client_ = makeHttpConnection(lookupPort("http"));
+  auto response = codec_client_->makeRequestWithBody(
+      Http::TestRequestHeaderMapImpl{{":method", "GET"},
+                                     {":path", "/aggregatecluster"},
+                                     {":scheme", "http"},
+                                     {":authority", "host"},
+                                     {"x-forwarded-for", "10.0.0.1"},
+                                     {"x-envoy-retry-on", "5xx"}},
+      1024);
+  waitForNextUpstreamRequest(FirstUpstreamIndex);
+  upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, false);
 
-//   ASSERT_TRUE(upstream_request_->waitForEndStream(*dispatcher_));
-//   ASSERT_TRUE(fake_upstream_connection_->close());
-//   ASSERT_TRUE(fake_upstream_connection_->waitForDisconnect());
-//   fake_upstream_connection_.reset();
+  ASSERT_TRUE(upstream_request_->waitForEndStream(*dispatcher_));
+  ASSERT_TRUE(fake_upstream_connection_->close());
+  ASSERT_TRUE(fake_upstream_connection_->waitForDisconnect());
+  fake_upstream_connection_.reset();
 
-//   waitForNextUpstreamRequest(SecondUpstreamIndex);
-//   upstream_request_->encodeHeaders(default_response_headers_, true);
+  waitForNextUpstreamRequest(SecondUpstreamIndex);
+  upstream_request_->encodeHeaders(default_response_headers_, true);
 
-//   ASSERT_TRUE(response->waitForEndStream());
-//   EXPECT_TRUE(upstream_request_->complete());
+  ASSERT_TRUE(response->waitForEndStream());
+  EXPECT_TRUE(upstream_request_->complete());
 
-//   EXPECT_TRUE(response->complete());
-//   EXPECT_EQ("200", response->headers().getStatusValue());
-//   cleanupUpstreamAndDownstream();
-// }
+  EXPECT_TRUE(response->complete());
+  EXPECT_EQ("200", response->headers().getStatusValue());
+  cleanupUpstreamAndDownstream();
+}
 
 } // namespace
 } // namespace Envoy
