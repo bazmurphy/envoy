@@ -780,10 +780,23 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnections) {
 
     // we need to add the http2 protocol options with max_concurrent_streams set to 1 on BOTH clusters to their configs, like:
 
+    // OLD way of achieving this in the config:
+
     // clusters:
     //  - name: <cluster_name>
-    //    http2_protocol_options:
-    //      max_concurrent_streams: 1
+    //      http2_protocol_options:
+    //        max_concurrent_streams: 1
+    
+    // NEW way of achieving this in the config:
+
+    // clusters:
+    //  - name: <cluster_name>
+    //   typed_extension_protocol_options:
+    //     envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+    //       "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+    //       explicit_http_config:
+    //         http2_protocol_options:
+    //           max_concurrent_streams: 1
 
     // create a new HttpProtocolOptions
     envoy::extensions::upstreams::http::v3::HttpProtocolOptions http_protocol_options; // make a new object
@@ -890,16 +903,16 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnections) {
 
   EXPECT_EQ("200", aggregate_cluster_response1->headers().getStatusValue());
 
+  // close the upstream connection (because it will be kept around for a while if we don't)
+  // so we can check the circuit breaker returns to its initial state
+  ASSERT_TRUE(fake_upstream_connection_->close());
+
+  // note: there are also these methods:
+  // ASSERT_TRUE(fake_upstream_connection_->waitForDisconnect());
+  // fake_upstream_connection_.reset();
+
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.cx_open", 0);
-
-  std::cout << "---------- 55 TEST ERRORS HERE" << std::endl;
-  // THE TEST ERRORS HERE: (the cx_open circuit breaker isn't returning to its default state... so this waitFor times out...)
-  // Value of: TestUtility::waitForGaugeEq(statStore(), name, value, time_system_, timeout)
-  //   Actual: false (timed out waiting for cluster.cluster_1.circuit_breakers.default.cx_open to be 0, current value 1)
-  //   Expected: true
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.cx_open", 0);
-
-  // apparently this is because envoy will keep the connection around in its connection pool to that upstream...
 
   // aggregate_cluster max_connections
   EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.cx_open")->value(), 0);
@@ -1005,3 +1018,51 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnections) {
 
 } // namespace
 } // namespace Envoy
+
+
+// --------------------
+
+// found this which maybe useful right now:
+
+// ConfigHelper::HttpProtocolOptions protocol_options;
+// protocol_options.mutable_common_http_protocol_options()
+//     ->mutable_max_requests_per_connection()
+//     ->set_value(1);
+// protocol_options.mutable_use_downstream_protocol_config();
+// auto* circuit_breakers = cluster->mutable_circuit_breakers();
+// circuit_breakers->add_thresholds()->mutable_max_connections()->set_value(1);
+// ConfigHelper::setProtocolOptions(*bootstrap.mutable_static_resources()->mutable_clusters(0),
+//                                  protocol_options);
+
+// test/integration/multiplexed_integration_test.cc
+
+// TEST_P(MultiplexedIntegrationTest, Http2DownstreamKeepalive) {
+//   EXCLUDE_DOWNSTREAM_HTTP3; // Http3 keepalive doesn't timeout and close connection.
+//   constexpr uint64_t interval_ms = 1;
+//   constexpr uint64_t timeout_ms = 250;
+//   config_helper_.addConfigModifier(
+//       [&](envoy::extensions::filters::network::http_connection_manager::v3::HttpConnectionManager&
+//               hcm) -> void {
+//         hcm.mutable_http2_protocol_options()
+//             ->mutable_connection_keepalive()
+//             ->mutable_interval()
+//             ->set_nanos(interval_ms * 1000 * 1000);
+//         hcm.mutable_http2_protocol_options()
+//             ->mutable_connection_keepalive()
+//             ->mutable_timeout()
+//             ->set_nanos(timeout_ms * 1000 * 1000);
+//       });
+//   initialize();
+//   codec_client_ = makeHttpConnection(makeClientConnection(lookupPort("http")));
+//   auto response = codec_client_->makeHeaderOnlyRequest(default_request_headers_);
+//   waitForNextUpstreamRequest();
+
+//   // This call is NOT running the event loop of the client, so downstream PINGs will
+//   // not receive a response.
+//   test_server_->waitForCounterEq("http2.keepalive_timeout", 1,
+//                                  std::chrono::milliseconds(timeout_ms * 2));
+
+//   ASSERT_TRUE(response->waitForReset());
+// }
+
+// --------------------
