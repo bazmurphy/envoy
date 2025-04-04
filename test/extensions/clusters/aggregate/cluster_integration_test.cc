@@ -1039,6 +1039,8 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnections) {
 // Setting this parameter to 1 will effectively disable keep alive. 
 // For HTTP/2 and HTTP/3, due to concurrent stream processing, the limit is approximate.
 
+// NOTE: this is like a cap where when we reach the cap that connection gets torn down
+
 // --------------------
 
 TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
@@ -1232,12 +1234,26 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
   test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_pending_overflow", 1);
   EXPECT_EQ(test_server_->counter("cluster.cluster_1.upstream_rq_pending_overflow")->value(), 1);
   
+  // --- from here is the bastard
+
   // now we need to revert to the default state...
 
   // complete the first request/response
   upstream_request_->encodeHeaders(default_response_headers_, true);
   ASSERT_TRUE(aggregate_cluster_response1->waitForEndStream());
   EXPECT_EQ("200", aggregate_cluster_response1->headers().getStatusValue());
+
+  // NOW I UNDERSTAND THE CONNECTION / STREAM / REQUEST CYCLE in relation to max_request_per_connection
+  // the connection gets torn down after it reaches it max number
+  // so a new connection has to be created in order for the request 2 to get through to the upstream
+
+  // wait for the second request to reach cluster_1
+  // waitForNextUpstreamRequest(FirstUpstreamIndex);
+
+  // complete the second request/response
+  // upstream_request_->encodeHeaders(default_response_headers_, true);
+  // ASSERT_TRUE(aggregate_cluster_response2->waitForEndStream());
+  // EXPECT_EQ("200", aggregate_cluster_response2->headers().getStatusValue());
 
   std::cout << "--------------------" << std::endl;
 
@@ -1260,45 +1276,6 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
   std::cout << "AFTER [response1] cluster_1 upstream_rq_pending_total: " << test_server_->counter("cluster.cluster_1.upstream_rq_pending_total")->value() << std::endl;
   std::cout << "AFTER [response1] cluster_1 upstream_cx_active: " << test_server_->gauge("cluster.cluster_1.upstream_cx_active")->value() << std::endl;
   std::cout << "AFTER [response1] cluster_1 upstream_cx_total: " << test_server_->counter("cluster.cluster_1.upstream_cx_total")->value() << std::endl;
-
-  // wait for the second request to reach the upstream 
-  // waitForNextUpstreamRequest(FirstUpstreamIndex);
-
-  // complete the second request/response
-  // upstream_request_->encodeHeaders(default_response_headers_, true);
-  // ASSERT_TRUE(aggregate_cluster_response2->waitForEndStream());
-  // EXPECT_EQ("200", aggregate_cluster_response1->headers().getStatusValue());
-
-  // test_server_->waitForGaugeGe("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open", 0);
-  // test_server_->waitForGaugeGe("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 0);
-  
-  // EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value(), 0);
-  // EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value(), 1);
-  
-  // EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value(), 0);
-  // EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value(), 1);
-
-  // std::cout << "--------------------" << std::endl;
-  
-  // std::cout << "AFTER aggregate_cluster rq_pending_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value() << std::endl;
-  // std::cout << "AFTER aggregate_cluster remaining_pending: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value() << std::endl;
-
-  // std::cout << "AFTER aggregate_cluster upstream_rq_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_rq_active")->value() << std::endl;
-  // std::cout << "AFTER aggregate_cluster upstream_rq_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_total")->value() << std::endl;
-  // std::cout << "AFTER aggregate_cluster upstream_rq_pending_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_rq_pending_active")->value() << std::endl;
-  // std::cout << "AFTER aggregate_cluster upstream_rq_pending_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_pending_total")->value() << std::endl;
-  // std::cout << "AFTER aggregate_cluster upstream_cx_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_cx_active")->value() << std::endl;
-  // std::cout << "AFTER aggregate_cluster upstream_cx_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_cx_total")->value() << std::endl;
-
-  // std::cout << "AFTER cluster_1 rq_pending_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value() << std::endl;
-  // std::cout << "AFTER cluster_1 remaining_pending: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value() << std::endl;
-
-  // std::cout << "AFTER cluster_1 upstream_rq_active: " << test_server_->gauge("cluster.cluster_1.upstream_rq_active")->value() << std::endl;
-  // std::cout << "AFTER cluster_1 upstream_rq_total: " << test_server_->counter("cluster.cluster_1.upstream_rq_total")->value() << std::endl;
-  // std::cout << "AFTER cluster_1 upstream_rq_pending_active: " << test_server_->gauge("cluster.cluster_1.upstream_rq_pending_active")->value() << std::endl;
-  // std::cout << "AFTER cluster_1 upstream_rq_pending_total: " << test_server_->counter("cluster.cluster_1.upstream_rq_pending_total")->value() << std::endl;
-  // std::cout << "AFTER cluster_1 upstream_cx_active: " << test_server_->gauge("cluster.cluster_1.upstream_cx_active")->value() << std::endl;
-  // std::cout << "AFTER cluster_1 upstream_cx_total: " << test_server_->counter("cluster.cluster_1.upstream_cx_total")->value() << std::endl;
 
   cleanupUpstreamAndDownstream();
 
@@ -1383,10 +1360,10 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
 // AFTER [response1] cluster_1 remaining_pending: 1
 // AFTER [response1] cluster_1 upstream_rq_active: 1  <--- this is now presumably response2 (since we just completed response1)
 // AFTER [response1] cluster_1 upstream_rq_total: 2
-// AFTER [response1] cluster_1 upstream_rq_pending_active: 0 <--- there are no more pending requests active
+// AFTER [response1] cluster_1 upstream_rq_pending_active: 0   <--- there are no more pending requests active
 // AFTER [response1] cluster_1 upstream_rq_pending_total: 2
 // AFTER [response1] cluster_1 upstream_cx_active: 1
-// AFTER [response1] cluster_1 upstream_cx_total: 2   <--- why was there 2 total connections now ?
+// AFTER [response1] cluster_1 upstream_cx_total: 2   <--- why was there 2 total connections now?
 // ---------- 99 TEST END
 // [external/com_google_absl/absl/flags/internal/flag.cc : 140] RAW: Restore saved value of envoy_quic_always_support_server_preferred_address to: true
 // [external/com_google_absl/absl/flags/internal/flag.cc : 140] RAW: Restore saved value of envoy_reloadable_features_runtime_initialized to: false
