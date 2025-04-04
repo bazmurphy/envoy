@@ -1244,7 +1244,23 @@ config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& boo
 
 // --------------------
 
+std::numeric_limits.max() // if we want max values for the circuit breaker limits)
 
+// --------------------
+
+// Config Helper to adjust the HTTP Protocol Options
+
+// [TODO] work out if there is already a protocol_options on the fake upstream
+
+// ConfigHelper::HttpProtocolOptions protocol_options;
+// protocol_options.mutable_common_http_protocol_options()
+//     ->mutable_max_requests_per_connection()
+//     ->set_value(1);
+// protocol_options.mutable_use_downstream_protocol_config();
+// auto* circuit_breakers = cluster->mutable_circuit_breakers();
+// circuit_breakers->add_thresholds()->mutable_max_connections()->set_value(1);
+// ConfigHelper::setProtocolOptions(*bootstrap.mutable_static_resources()->mutable_clusters(0),
+//                                  protocol_options);
 
 // --------------------
 

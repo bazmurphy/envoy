@@ -307,27 +307,6 @@ TEST_P(AggregateIntegrationTest, PreviousPrioritiesRetryPredicate) {
 
 // --------------------
 
-// TEST PLAN
-
-// 1. setup the two circuit breakers
-//    - one at the aggregate_cluster level
-//    - one at cluster1 level
-// and then we can confirm that the aggregate_cluster circuit breaker does not get used [EXCEPT for retries]
-
-// 2. send request1 through to /aggregate_cluster (and prevent it from completing)
-
-// 3. check the circuit breaker states
-//    - aggregate_cluster should be 0 (normal state == "closed")
-//    - cluster1 should be 1 (triggered state == "open")
-
-// 4. send request2 through 
-//    - this request should automatically fail
-
-// 5. send request3 through directly to /cluster1 at the same time as request2
-//    - this request should also automatically fail
-
-// --------------------
-
 // https://www.envoyproxy.io/docs/envoy/latest/configuration/upstream/cluster_manager/cluster_stats#circuit-breakers-statistics 
 
 // STATS OF INTEREST 
@@ -548,7 +527,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRequests) {
 
   // now we want to make the requests to check the circuit breakers behaviour...
 
-  Envoy::IntegrationCodecClientPtr codec_client_ = makeHttpConnection(lookupPort("http"));
+  codec_client_ = makeHttpConnection(lookupPort("http"));
 
   std::cout << "---------- 08 SENDING REQUEST TO /aggregatecluster" << std::endl;
 
@@ -729,24 +708,54 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRequests) {
 
 // theres an option in envoy to set and object that describes how to do HTTP2
 
-// filter_chains:
-//   - filters:
-//     - name: envoy.filters.network.http_connection_manager
-//       typed_config:
-//       "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-//         codec_type: http2
-//         http2_protocol_options: {}
+// if we tell the upstream that it can handle at most one stream per connection
+// because we are using http, set the max_concurrent_streams per connection on the cluster to 1
+// then do the same dance as the other test, but check the cx stats etc.
+
+// we need to add the http2 protocol options with max_concurrent_streams set to 1 on BOTH clusters to their configs:
+
+// ABOUT "max_concurrent_streams"
+
+// https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/core/v3/protocol.proto#envoy-v3-api-msg-config-core-v3-http2protocoloptions
+
+// config.core.v3.Http2ProtocolOptions
+
+// {
+//   "hpack_table_size": {...},
+//   "max_concurrent_streams": {...},
+//   "initial_stream_window_size": {...},
+//   "initial_connection_window_size": {...},
+//   "allow_connect": ...,
+//   "max_outbound_frames": {...},
+//   "max_outbound_control_frames": {...},
+//   "max_consecutive_inbound_frames_with_empty_payload": {...},
+//   "max_inbound_priority_frames_per_stream": {...},
+//   "max_inbound_window_update_frames_per_data_frame_sent": {...},
+//   "stream_error_on_invalid_http_messaging": ...,
+//   "override_stream_error_on_invalid_http_message": {...},
+//   "connection_keepalive": {...},
+//   "max_metadata_size": {...}
+// }
+
+// max_concurrent_streams
+
+// (UInt32Value) Maximum concurrent streams allowed for peer on one HTTP/2 connection. 
+// Valid values range from 1 to 2147483647 (2^31 - 1) and defaults to 2147483647.
+// For upstream connections, this also limits how many streams Envoy will initiate concurrently on a single connection. 
+// If the limit is reached, Envoy may queue requests or establish additional connections (as allowed per circuit breaker limits).
+// This acts as an upper bound: Envoy will lower the max concurrent streams allowed on a given connection based on upstream settings. 
+// Config dumps will reflect the configured upper bound, not the per-connection negotiated limits.
+
+// example yaml config:
 
 // clusters:
-//    http2_protocol_options: {}
-
-// max_concurrent_streams [FIND AN EXAMPLE IN YAML]
-
-// if we tell the upstream that it can handle at most one stream per connection
-
-// because we are using http2
-// set the max streams per connection on the cluster to 1
-// then do the same dance as the other one, but check the cx stats bla bla
+//  - name: <cluster_name>
+//   typed_extension_protocol_options:
+//     envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+//       "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+//       explicit_http_config:
+//         http2_protocol_options:
+//           max_concurrent_streams: 1
 
 // --------------------
 
@@ -777,26 +786,6 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnections) {
     aggregate_cluster_circuit_breakers_threshold_default->mutable_max_requests()->set_value(1000000000);
     aggregate_cluster_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1000000000);
     aggregate_cluster_circuit_breakers_threshold_default->set_track_remaining(true);
-
-    // we need to add the http2 protocol options with max_concurrent_streams set to 1 on BOTH clusters to their configs, like:
-
-    // OLD way of achieving this in the config:
-
-    // clusters:
-    //  - name: <cluster_name>
-    //      http2_protocol_options:
-    //        max_concurrent_streams: 1
-    
-    // NEW way of achieving this in the config:
-
-    // clusters:
-    //  - name: <cluster_name>
-    //   typed_extension_protocol_options:
-    //     envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
-    //       "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
-    //       explicit_http_config:
-    //         http2_protocol_options:
-    //           max_concurrent_streams: 1
 
     // create a new HttpProtocolOptions
     envoy::extensions::upstreams::http::v3::HttpProtocolOptions http_protocol_options; // make a new object
@@ -861,7 +850,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnections) {
   std::cout << "BEFORE cluster_1 cx_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.cx_open")->value() << std::endl;
   std::cout << "BEFORE cluster_1 remaining_cx: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_cx")->value() << std::endl;
 
-  Envoy::IntegrationCodecClientPtr codec_client_ = makeHttpConnection(lookupPort("http"));
+  codec_client_ = makeHttpConnection(lookupPort("http"));
 
   // send the first request (this should go via "aggregate_cluster" through to "cluster_1")
   auto aggregate_cluster_response1 = codec_client_->makeHeaderOnlyRequest(
@@ -942,9 +931,6 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnections) {
 
 // rq_pending_open (Gauge) - Whether the pending requests circuit breaker is under its concurrency limit (0) or is at capacity and no longer admitting (1)
 
-// 1. work out what a pending request
-// 2. cry
-
 // https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/circuit_breaking
 
 // Cluster maximum pending requests: 
@@ -955,114 +941,238 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnections) {
 // If this circuit breaker overflows the upstream_rq_pending_overflow counter for the cluster will increment. 
 // For HTTP/3 the equivalent to HTTP/2’s max concurrent streams is max concurrent streams
 
-// max concurrent streams
-// max request per connection
+// idea 1: 
+// set the max_connections circuit breaker to 0 so there can't be any connections
+// and all requests will become pending until the circuit breaker trips
+// [but i prefer test isolation, so it is only this specific circuit breaker setting we are testing and no depedency on the others]
 
-// idea: set the max connections circuit breaker to zero so there can't be any connections
-// and all requests will become pneding until the circuit breaker trips
+// idea 2:
+// if we want to have 1 connection and then hold that up, we can use the max_concurrent_streams AND max_requests_per_connection
+// together they will "put a bound on the number of in-flight requests to the upstream"
+// so 1 request should hold up that 1 connection, and no more connections are available, so requests will queue and we should be able to trigger the circuit breaker
 
-// if we want to have 1 connection and then hold that up, we can use the max_concurrent_streams from above^
-// then that 1 request will fill that 1 connection and so more connections are not available to trigger it
-// and also max_connections, there is a circuit breaker that limits the max streams per connection (max_concurrent_streams)
+// ABOUT "max_requests_per_connection" :
 
-// and together they put a bound on the number of in-flight requests to the upstream
+// NOTE: the option in Cluster is DEPRECATED: https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/cluster/v3/cluster.proto.html`
+
+// This replaces the prior pattern of explicit protocol configuration directly in the cluster. 
+// So a configuration like this, explicitly configuring the use of HTTP/2 upstream:
+
 // clusters:
-//  http2_protocol_options:
-//    max_concurrent_streams: 100
+//   - name: some_service
+//     connect_timeout: 5s
+//     upstream_http_protocol_options:
+//       auto_sni: true
+//     common_http_protocol_options:
+//       idle_timeout: 1s
+//     http2_protocol_options:
+//       max_concurrent_streams: 100
+//     .... [further cluster config]
 
-// note: you can close the connection forcefully on the makehttp bla bla connection (codec_client_) [janky]
+// Would now look like this:
 
-// --------------------
+// clusters:
+//   - name: some_service
+//     connect_timeout: 5s
+//     typed_extension_protocol_options:
+//       envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+//         "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+//         upstream_http_protocol_options:
+//           auto_sni: true
+//         common_http_protocol_options:
+//           idle_timeout: 1s
+//         explicit_http_config:
+//           http2_protocol_options:
+//             max_concurrent_streams: 100
+//     .... [further cluster config]
 
-// https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/core/v3/protocol.proto#envoy-v3-api-msg-config-core-v3-http2protocoloptions
 
-// Http2 Protocol Options
+// config.core.v3.HttpProtocolOptions
+
+// https://www.envoyproxy.io/docs/envoy/latest/api-v3/extensions/upstreams/http/v3/http_protocol_options.proto.html
 
 // {
-//   "hpack_table_size": {...},
-//   "max_concurrent_streams": {...},
-//   "initial_stream_window_size": {...},
-//   "initial_connection_window_size": {...},
-//   "allow_connect": ...,
-//   "max_outbound_frames": {...},
-//   "max_outbound_control_frames": {...},
-//   "max_consecutive_inbound_frames_with_empty_payload": {...},
-//   "max_inbound_priority_frames_per_stream": {...},
-//   "max_inbound_window_update_frames_per_data_frame_sent": {...},
-//   "stream_error_on_invalid_http_messaging": ...,
-//   "override_stream_error_on_invalid_http_message": {...},
-//   "connection_keepalive": {...},
-//   "max_metadata_size": {...}
+//   "common_http_protocol_options": {...},
+//   "upstream_http_protocol_options": {...},
+//   "explicit_http_config": {...},
+//   "use_downstream_protocol_config": {...},
+//   "auto_config": {...},
+//   "http_filters": []
 // }
 
-// max_concurrent_streams
+// https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/core/v3/protocol.proto#envoy-v3-api-msg-config-core-v3-httpprotocoloptions
 
-// (UInt32Value) Maximum concurrent streams allowed for peer on one HTTP/2 connection. 
-// Valid values range from 1 to 2147483647 (2^31 - 1) and defaults to 2147483647.
-// For upstream connections, this also limits how many streams Envoy will initiate concurrently on a single connection. 
-// If the limit is reached, Envoy may queue requests or establish additional connections (as allowed per circuit breaker limits).
-// This acts as an upper bound: Envoy will lower the max concurrent streams allowed on a given connection based on upstream settings. 
-// Config dumps will reflect the configured upper bound, not the per-connection negotiated limits.
+// common_http_protocol_options
 
-// clusters:
-//  - name: <cluster_name>
-//    http2_protocol_options:
-//      max_concurrent_streams: 1
+// {
+//   "idle_timeout": {...},
+//   "max_connection_duration": {...},
+//   "max_headers_count": {...},
+//   "max_response_headers_kb": {...},
+//   "max_stream_duration": {...},
+//   "headers_with_underscores_action": ...,
+//   "max_requests_per_connection": {...}
+// }
+
+// https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/core/v3/protocol.proto#envoy-v3-api-field-config-core-v3-httpprotocoloptions-max-requests-per-connection
+
+// max_requests_per_connection
+
+// (UInt32Value) Optional maximum requests for both upstream and downstream connections. 
+// If not specified, there is no limit. 
+// Setting this parameter to 1 will effectively disable keep alive. 
+// For HTTP/2 and HTTP/3, due to concurrent stream processing, the limit is approximate.
 
 // --------------------
 
-// (std::numeric_limits.max() if we want max values for the circuit breaker limits)
+TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
+  std::cout << "---------- 00 TEST START" << std::endl;
 
-// --------------------
+  setDownstreamProtocol(Http::CodecType::HTTP2);
+  
+  config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
+    auto* static_resources = bootstrap.mutable_static_resources();
+    auto* aggregate_cluster = static_resources->mutable_clusters(1);
+    
+    auto* aggregate_cluster_type = aggregate_cluster->mutable_cluster_type();
+    auto* aggregate_cluster_typed_config = aggregate_cluster_type->mutable_typed_config();
+    envoy::extensions::clusters::aggregate::v3::ClusterConfig temp_aggregate_cluster_typed_config;
+    aggregate_cluster_typed_config->UnpackTo(&temp_aggregate_cluster_typed_config);
+    temp_aggregate_cluster_typed_config.clear_clusters();
+    temp_aggregate_cluster_typed_config.add_clusters("cluster_1");
+    aggregate_cluster_typed_config->PackFrom(temp_aggregate_cluster_typed_config);
 
+    auto* aggregate_cluster_circuit_breakers = aggregate_cluster->mutable_circuit_breakers();
+    auto* aggregate_cluster_circuit_breakers_threshold_default = aggregate_cluster_circuit_breakers->add_thresholds();
+    aggregate_cluster_circuit_breakers_threshold_default->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
+    aggregate_cluster_circuit_breakers_threshold_default->mutable_max_connections()->set_value(1000000000); // high value
+    aggregate_cluster_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(1); // set to 1
+    aggregate_cluster_circuit_breakers_threshold_default->mutable_max_requests()->set_value(1000000000); // high value
+    aggregate_cluster_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1000000000); // high value
+    aggregate_cluster_circuit_breakers_threshold_default->set_track_remaining(true);
+
+    // when i tried to use max_concurrent_streams as 0
+    // i got the error:
+    // "must be inside range [1, 2147483647]"
+    // so we must to set max_concurrent_streams at a minimum to 1
+
+    envoy::extensions::upstreams::http::v3::HttpProtocolOptions http_protocol_options;
+    // set the max_requests_per_connection to 1
+    http_protocol_options.mutable_common_http_protocol_options()->mutable_max_requests_per_connection()->set_value(1);
+    // set the max_concurrent_streams to 1
+    http_protocol_options.mutable_explicit_http_config()->mutable_http2_protocol_options()->mutable_max_concurrent_streams()->set_value(1);
+    (*aggregate_cluster->mutable_typed_extension_protocol_options())
+      ["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]
+        .PackFrom(http_protocol_options);
+
+    std::cout << "aggregate_cluster max_concurrent_streams: " << http_protocol_options.explicit_http_config().http2_protocol_options().max_concurrent_streams().value() << std::endl;
+  });
+
+  initialize();
+
+  auto* cluster1_circuit_breakers = cluster1_.mutable_circuit_breakers();
+  auto* cluster1_circuit_breakers_threshold_default = cluster1_circuit_breakers->add_thresholds();
+  cluster1_circuit_breakers_threshold_default->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
+  cluster1_circuit_breakers_threshold_default->mutable_max_connections()->set_value(1000000000); // high value
+  cluster1_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(1); // set to 1
+  cluster1_circuit_breakers_threshold_default->mutable_max_requests()->set_value(1000000000); // high value
+  cluster1_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1000000000); // high value
+  cluster1_circuit_breakers_threshold_default->set_track_remaining(true);
+
+  envoy::extensions::upstreams::http::v3::HttpProtocolOptions http_protocol_options;
+  // set the max_requests_per_connection to 1
+  http_protocol_options.mutable_common_http_protocol_options()->mutable_max_requests_per_connection()->set_value(1);
+    // set the max_concurrent_streams to 1
+  http_protocol_options.mutable_explicit_http_config()->mutable_http2_protocol_options()->mutable_max_concurrent_streams()->set_value(1);
+  (*cluster1_.mutable_typed_extension_protocol_options())
+    ["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]
+      .PackFrom(http_protocol_options);
+
+  EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "55", {}, {}, {}));
+  sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster, {cluster1_}, {cluster1_}, {}, "56");
+
+  test_server_->waitForGaugeEq("cluster_manager.active_clusters", 3);
+
+  test_server_->waitForGaugeGe("cluster.cluster_1.circuit_breakers.default.remaining_pending", 0);
+
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open", 0);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 0);
+
+  EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value(), 0);
+  EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value(), 1);
+
+  EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value(), 0);
+  EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value(), 1);
+
+  std::cout << "BEFORE aggregate_cluster rq_pending_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value() << std::endl;
+  std::cout << "BEFORE aggregate_cluster remaining_pending: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value() << std::endl;
+
+  std::cout << "BEFORE cluster_1 rq_pending_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value() << std::endl;
+  std::cout << "BEFORE cluster_1 remaining_pending: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value() << std::endl;
+
+  codec_client_ = makeHttpConnection(lookupPort("http"));
+
+  // make the first request
+  // so the connection is "saturated" (since that connection should only allow 1 concurrent stream and 1 request on it)
+  // and then subsequent requests should be in a "pending" state
+  auto aggregate_cluster_response1 = codec_client_->makeHeaderOnlyRequest(
+    Http::TestRequestHeaderMapImpl{{":method", "GET"},{":path", "/aggregatecluster"},{":scheme", "http"},{":authority", "host"}}
+  );
+
+  // wait for that request to arrive at cluster_1
+  waitForNextUpstreamRequest(FirstUpstreamIndex);
+
+  // make the second request to make 1 total pending request
+  auto aggregate_cluster_response2 = codec_client_->makeHeaderOnlyRequest(
+    Http::TestRequestHeaderMapImpl{{":method", "GET"},{":path", "/aggregatecluster"},{":scheme", "http"},{":authority", "host"}}
+  );
+
+  // the max_pending_requests circuit breaker should now be triggered
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 1);
+  
+  EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value(), 0);
+  EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value(), 1);
+  
+  EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value(), 1);
+  EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value(), 0);
+  
+  std::cout << "DURING [request2] aggregate_cluster rq_pending_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value() << std::endl;
+  std::cout << "DURING [request2] aggregate_cluster remaining_pending: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value() << std::endl;
+
+  std::cout << "DURING [request2] cluster_1 rq_pending_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value() << std::endl;
+  std::cout << "DURING [request2] cluster_1 remaining_pending: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value() << std::endl;
+
+  // make the third request to make 2 total pending requests
+  auto aggregate_cluster_response3 = codec_client_->makeHeaderOnlyRequest(
+    Http::TestRequestHeaderMapImpl{{":method", "GET"},{":path", "/aggregatecluster"},{":scheme", "http"},{":authority", "host"}}
+  );
+
+  // check the pending requests overflow counter
+  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_pending_overflow", 1);
+
+  EXPECT_EQ(test_server_->counter("cluster.cluster_1.upstream_rq_pending_overflow")->value(), 1);
+  
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 0);
+  
+  // EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value(), 0);
+  // EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value(), 1);
+  
+  // EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value(), 0);
+  // EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value(), 1);
+  
+  // std::cout << "AFTER aggregate_cluster rq_pending_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value() << std::endl;
+  // std::cout << "AFTER aggregate_cluster remaining_pending: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value() << std::endl;
+
+  // std::cout << "AFTER cluster_1 rq_pending_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value() << std::endl;
+  // std::cout << "AFTER cluster_1 remaining_pending: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value() << std::endl;
+
+  cleanupUpstreamAndDownstream();
+
+  // TODO: try to get rid of this
+  codec_client_->close();
+
+  std::cout << "---------- 99 TEST END" << std::endl;
+}
 
 } // namespace
 } // namespace Envoy
-
-
-// --------------------
-
-// found this which maybe useful right now:
-
-// ConfigHelper::HttpProtocolOptions protocol_options;
-// protocol_options.mutable_common_http_protocol_options()
-//     ->mutable_max_requests_per_connection()
-//     ->set_value(1);
-// protocol_options.mutable_use_downstream_protocol_config();
-// auto* circuit_breakers = cluster->mutable_circuit_breakers();
-// circuit_breakers->add_thresholds()->mutable_max_connections()->set_value(1);
-// ConfigHelper::setProtocolOptions(*bootstrap.mutable_static_resources()->mutable_clusters(0),
-//                                  protocol_options);
-
-// test/integration/multiplexed_integration_test.cc
-
-// TEST_P(MultiplexedIntegrationTest, Http2DownstreamKeepalive) {
-//   EXCLUDE_DOWNSTREAM_HTTP3; // Http3 keepalive doesn't timeout and close connection.
-//   constexpr uint64_t interval_ms = 1;
-//   constexpr uint64_t timeout_ms = 250;
-//   config_helper_.addConfigModifier(
-//       [&](envoy::extensions::filters::network::http_connection_manager::v3::HttpConnectionManager&
-//               hcm) -> void {
-//         hcm.mutable_http2_protocol_options()
-//             ->mutable_connection_keepalive()
-//             ->mutable_interval()
-//             ->set_nanos(interval_ms * 1000 * 1000);
-//         hcm.mutable_http2_protocol_options()
-//             ->mutable_connection_keepalive()
-//             ->mutable_timeout()
-//             ->set_nanos(timeout_ms * 1000 * 1000);
-//       });
-//   initialize();
-//   codec_client_ = makeHttpConnection(makeClientConnection(lookupPort("http")));
-//   auto response = codec_client_->makeHeaderOnlyRequest(default_request_headers_);
-//   waitForNextUpstreamRequest();
-
-//   // This call is NOT running the event loop of the client, so downstream PINGs will
-//   // not receive a response.
-//   test_server_->waitForCounterEq("http2.keepalive_timeout", 1,
-//                                  std::chrono::milliseconds(timeout_ms * 2));
-
-//   ASSERT_TRUE(response->waitForReset());
-// }
-
-// --------------------
