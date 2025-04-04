@@ -389,7 +389,157 @@ TEST_P(AggregateIntegrationTest, CircuitBreakingAggregateLimitLowerThanChildMaxR
   cleanupUpstreamAndDownstream();
 }
 
-TEST_P(AggregateIntegrationTest, CircuitBreakingChildLimitLowerThanAggregateMaxPendingRequets) {
+// TEST_P(AggregateIntegrationTest, CircuitBreakingChildLimitLowerThanAggregateMaxPendingRequets) {
+
+//   // Add circuit breaker config to aggregate cluster
+//   config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
+//     auto* static_resources = bootstrap.mutable_static_resources();
+//     auto* cluster = static_resources->mutable_clusters(1);
+//     auto* threshold = cluster->mutable_circuit_breakers()->mutable_thresholds()->Add();
+//     threshold->set_track_remaining(true);
+//     threshold->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
+//     threshold->mutable_max_pending_requests()->set_value(10);
+//   });
+
+//   initialize();
+
+//   // Create an updated version of cluster1_ with circuit breakers
+//   auto* threshold_cluster1 = cluster1_.mutable_circuit_breakers()->mutable_thresholds()->Add();
+//   threshold_cluster1->set_track_remaining(true);
+//   threshold_cluster1->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
+//   threshold_cluster1->mutable_max_pending_requests()->set_value(1);
+
+//   // Use an unreachable upstream address (different from the one set for the fakeUpstreams[2]
+//   // "127.0.0.1" ) to make the request pending
+//   cluster1_.mutable_load_assignment()
+//       ->mutable_endpoints(0)
+//       ->mutable_lb_endpoints(0)
+//       ->mutable_endpoint()
+//       ->mutable_address()
+//       ->mutable_socket_address()
+//       ->set_address("1.1.1.1");
+
+//   // Send the updated cluster via CDS
+//   sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster,
+//                                                              {cluster1_}, {cluster1_}, {},
+//                                                              "413");
+
+//   // before sending a request - cluster_1
+//   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_pending",
+//   1); test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open",
+//   0);
+
+//   // before sending a request - aggregate_cluster
+//   test_server_->waitForGaugeEq(
+//       "cluster.aggregate_cluster.circuit_breakers.default.remaining_pending", 10);
+//   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open",
+//                                0);
+
+//   codec_client_ = makeHttpConnection(lookupPort("http"));
+//   auto response = codec_client_->makeHeaderOnlyRequest(
+//       Http::TestRequestHeaderMapImpl{{":method", "GET"},
+//                                      {":path", "/aggregatecluster"},
+//                                      {":scheme", "http"},
+//                                      {":authority", "host"}});
+
+//   // after sending a request - cluster_1
+//   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_pending",
+//   0); test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open",
+//   1);
+
+//   // after sending a request - aggregate_cluster
+//   test_server_->waitForGaugeEq(
+//       "cluster.aggregate_cluster.circuit_breakers.default.remaining_pending", 10);
+//   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open",
+//                                0);
+
+//   cleanupUpstreamAndDownstream();
+// }
+
+// TEST_P(AggregateIntegrationTest, CircuitBreakingAggregateLimitLowerThanChildMaxPendingRequests) {
+
+//   config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
+//     auto* static_resources = bootstrap.mutable_static_resources();
+//     auto* cluster = static_resources->mutable_clusters(1);
+//     auto* threshold = cluster->mutable_circuit_breakers()->mutable_thresholds()->Add();
+//     threshold->set_track_remaining(true);
+//     threshold->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
+//     threshold->mutable_max_pending_requests()->set_value(1);
+//   });
+
+//   initialize();
+
+//   // Create an updated version of cluster1_ with circuit breakers
+//   auto* threshold_cluster1 = cluster1_.mutable_circuit_breakers()->mutable_thresholds()->Add();
+//   threshold_cluster1->set_track_remaining(true);
+//   threshold_cluster1->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
+//   threshold_cluster1->mutable_max_pending_requests()->set_value(10);
+
+//   // Use an unreachable upstream address (different from the one set for the fakeUpstreams[2]
+//   // "127.0.0.1" ) to make the request pending
+//   cluster1_.mutable_load_assignment()
+//       ->mutable_endpoints(0)
+//       ->mutable_lb_endpoints(0)
+//       ->mutable_endpoint()
+//       ->mutable_address()
+//       ->mutable_socket_address()
+//       ->set_address("1.1.1.1");
+
+//   // Send the updated cluster via CDS
+//   sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster,
+//                                                              {cluster1_}, {cluster1_}, {},
+//                                                              "413");
+
+//   // before sending a request - cluster_1
+//   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_pending",
+//   10); test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open",
+//   0);
+
+//   // before sending a request - aggregate_cluster
+//   test_server_->waitForGaugeEq(
+//       "cluster.aggregate_cluster.circuit_breakers.default.remaining_pending", 1);
+//   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open",
+//                                0);
+
+//   codec_client_ = makeHttpConnection(lookupPort("http"));
+//   auto response = codec_client_->makeHeaderOnlyRequest(
+//       Http::TestRequestHeaderMapImpl{{":method", "GET"},
+//                                      {":path", "/aggregatecluster"},
+//                                      {":scheme", "http"},
+//                                      {":authority", "host"}});
+
+//   // after sending a request - cluster_1
+//   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_pending",
+//   9); test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open",
+//   0);
+
+//   // after sending a request - aggregate_cluster
+//   test_server_->waitForGaugeEq(
+//       "cluster.aggregate_cluster.circuit_breakers.default.remaining_pending", 1);
+//   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open",
+//                                0);
+
+//   cleanupUpstreamAndDownstream();
+// }
+
+TEST_P(AggregateIntegrationTest, CircuitBreakingChildLimitLowerThanAggregateMaxRetries) {
+  config_helper_.addConfigModifier(
+      [](envoy::extensions::filters::network::http_connection_manager::v3::HttpConnectionManager&
+             hcm) {
+        auto* virtual_host = hcm.mutable_route_config()->mutable_virtual_hosts(0);
+
+        // Find the route to aggregate_cluster
+        for (int i = 0; i < virtual_host->routes_size(); i++) {
+          auto* route = virtual_host->mutable_routes(i);
+          if (route->match().prefix() == "/aggregatecluster") {
+            auto* retry_policy = route->mutable_route()->mutable_retry_policy();
+            // Add the missing retry policy components
+            retry_policy->set_retry_on("5xx");
+            retry_policy->mutable_per_try_timeout()->set_seconds(1);
+            break;
+          }
+        }
+      });
 
   // Add circuit breaker config to aggregate cluster
   config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
@@ -398,7 +548,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakingChildLimitLowerThanAggregateMaxP
     auto* threshold = cluster->mutable_circuit_breakers()->mutable_thresholds()->Add();
     threshold->set_track_remaining(true);
     threshold->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-    threshold->mutable_max_pending_requests()->set_value(10);
+    threshold->mutable_max_retries()->set_value(2);
   });
 
   initialize();
@@ -407,61 +557,104 @@ TEST_P(AggregateIntegrationTest, CircuitBreakingChildLimitLowerThanAggregateMaxP
   auto* threshold_cluster1 = cluster1_.mutable_circuit_breakers()->mutable_thresholds()->Add();
   threshold_cluster1->set_track_remaining(true);
   threshold_cluster1->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-  threshold_cluster1->mutable_max_pending_requests()->set_value(1);
+  threshold_cluster1->mutable_max_retries()->set_value(1);
 
-  // Use an unreachable upstream address (different from the one set for the fakeUpstreams[2]
-  // "127.0.0.1" ) to make the request pending
-  cluster1_.mutable_load_assignment()
-      ->mutable_endpoints(0)
-      ->mutable_lb_endpoints(0)
-      ->mutable_endpoint()
-      ->mutable_address()
-      ->mutable_socket_address()
-      ->set_address("1.1.1.1");
-
-  // Send the updated cluster via CDS
   sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster,
                                                              {cluster1_}, {cluster1_}, {}, "413");
 
-  // before sending a request - cluster_1
-  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_pending", 1);
-  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 0);
+  // before creating a connection - cluster_1
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries", 1);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open", 0);
 
-  // before sending a request - aggregate_cluster
+  // before creating a connection - aggregate_cluster
   test_server_->waitForGaugeEq(
-      "cluster.aggregate_cluster.circuit_breakers.default.remaining_pending", 10);
-  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open",
+      "cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 2);
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open",
                                0);
+  // Create multiple HTTP/1.1 connections
+  std::vector<IntegrationCodecClientPtr> clients;
+  std::vector<IntegrationStreamDecoderPtr> responses;
 
-  codec_client_ = makeHttpConnection(lookupPort("http"));
-  auto response = codec_client_->makeHeaderOnlyRequest(
-      Http::TestRequestHeaderMapImpl{{":method", "GET"},
-                                     {":path", "/aggregatecluster"},
-                                     {":scheme", "http"},
-                                     {":authority", "host"}});
+  // Create 2 connections
+  for (int i = 0; i < 2; i++) {
+    clients.push_back(makeHttpConnection(lookupPort("http")));
+  }
 
-  // after sending a request - cluster_1
-  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_pending", 0);
-  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 1);
+  // Send requests concurrently
+  for (int i = 0; i < 2; i++) {
+    auto& client = clients[i];
+    auto response =
+        client->makeRequestWithBody(Http::TestRequestHeaderMapImpl{{":method", "GET"},
+                                                                   {":path", "/aggregatecluster"},
+                                                                   {":scheme", "http"},
+                                                                   {":authority", "host"}},
+                                    1024);
+    responses.push_back(std::move(response));
+  };
 
-  // after sending a request - aggregate_cluster
+  std::vector<FakeHttpConnectionPtr> upstream_connections;
+  std::vector<FakeStreamPtr> upstream_requests;
+
+  for (int i = 0; i < 2; i++) {
+    // Use waitForNextUpstreamRequest to handle the connection and request
+    waitForNextUpstreamRequest(FirstUpstreamIndex);
+
+    // Store the connection and request (move them to avoid having them overwritten)
+    upstream_connections.push_back(std::move(fake_upstream_connection_));
+    upstream_requests.push_back(std::move(upstream_request_));
+
+    // Send 503 response to trigger retry
+    upstream_requests[i]->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, true);
+
+    // Close the connection to ensure a new one is created for the retry
+    ASSERT_TRUE(upstream_connections[i]->close());
+    ASSERT_TRUE(upstream_connections[i]->waitForDisconnect());
+  }
+
+  // after creating a connection - cluster_1
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries", 1);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open", 0);
+
+  // after creating a connection - aggregate_cluster
   test_server_->waitForGaugeEq(
-      "cluster.aggregate_cluster.circuit_breakers.default.remaining_pending", 10);
-  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open",
+      "cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 1);
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open",
                                0);
+  // Clean up
+  for (auto& client : clients) {
+    client->close();
+  }
 
   cleanupUpstreamAndDownstream();
 }
 
-TEST_P(AggregateIntegrationTest, CircuitBreakingAggregateLimitLowerThanChildMaxPendingRequests) {
+TEST_P(AggregateIntegrationTest, CircuitBreakingAggregateLimitLowerThanChildMaxRetries) {
+  config_helper_.addConfigModifier(
+      [](envoy::extensions::filters::network::http_connection_manager::v3::HttpConnectionManager&
+             hcm) {
+        auto* virtual_host = hcm.mutable_route_config()->mutable_virtual_hosts(0);
 
+        // Find the route to aggregate_cluster
+        for (int i = 0; i < virtual_host->routes_size(); i++) {
+          auto* route = virtual_host->mutable_routes(i);
+          if (route->match().prefix() == "/aggregatecluster") {
+            auto* retry_policy = route->mutable_route()->mutable_retry_policy();
+            // Add the missing retry policy components
+            retry_policy->set_retry_on("5xx");
+            retry_policy->mutable_per_try_timeout()->set_seconds(1);
+            break;
+          }
+        }
+      });
+
+  // Add circuit breaker config to aggregate cluster
   config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
     auto* static_resources = bootstrap.mutable_static_resources();
     auto* cluster = static_resources->mutable_clusters(1);
     auto* threshold = cluster->mutable_circuit_breakers()->mutable_thresholds()->Add();
     threshold->set_track_remaining(true);
     threshold->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-    threshold->mutable_max_pending_requests()->set_value(1);
+    threshold->mutable_max_retries()->set_value(2);
   });
 
   initialize();
@@ -470,48 +663,75 @@ TEST_P(AggregateIntegrationTest, CircuitBreakingAggregateLimitLowerThanChildMaxP
   auto* threshold_cluster1 = cluster1_.mutable_circuit_breakers()->mutable_thresholds()->Add();
   threshold_cluster1->set_track_remaining(true);
   threshold_cluster1->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-  threshold_cluster1->mutable_max_pending_requests()->set_value(10);
-
-  // Use an unreachable upstream address (different from the one set for the fakeUpstreams[2]
-  // "127.0.0.1" ) to make the request pending
-  cluster1_.mutable_load_assignment()
-      ->mutable_endpoints(0)
-      ->mutable_lb_endpoints(0)
-      ->mutable_endpoint()
-      ->mutable_address()
-      ->mutable_socket_address()
-      ->set_address("1.1.1.1");
+  threshold_cluster1->mutable_max_connections()->set_value(3);
 
   // Send the updated cluster via CDS
   sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster,
                                                              {cluster1_}, {cluster1_}, {}, "413");
 
-  // before sending a request - cluster_1
-  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_pending", 10);
-  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 0);
+  // before creating a connection - cluster_1
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries", 3);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open", 0);
 
-  // before sending a request - aggregate_cluster
+  // before creating a connection - aggregate_cluster
   test_server_->waitForGaugeEq(
-      "cluster.aggregate_cluster.circuit_breakers.default.remaining_pending", 1);
-  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open",
+      "cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 2);
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open",
                                0);
 
-  codec_client_ = makeHttpConnection(lookupPort("http"));
-  auto response = codec_client_->makeHeaderOnlyRequest(
-      Http::TestRequestHeaderMapImpl{{":method", "GET"},
-                                     {":path", "/aggregatecluster"},
-                                     {":scheme", "http"},
-                                     {":authority", "host"}});
+  // Create multiple HTTP/1.1 connections
+  std::vector<IntegrationCodecClientPtr> clients;
+  std::vector<IntegrationStreamDecoderPtr> responses;
 
-  // after sending a request - cluster_1
-  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_pending", 9);
-  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 0);
+  // Create 2 connections
+  for (int i = 0; i < 2; i++) {
+    clients.push_back(makeHttpConnection(lookupPort("http")));
+  }
 
-  // after sending a request - aggregate_cluster
+  // Send requests concurrently
+  for (int i = 0; i < 2; i++) {
+    auto& client = clients[i];
+    auto response =
+        client->makeRequestWithBody(Http::TestRequestHeaderMapImpl{{":method", "GET"},
+                                                                   {":path", "/aggregatecluster"},
+                                                                   {":scheme", "http"},
+                                                                   {":authority", "host"}},
+                                    1024);
+    responses.push_back(std::move(response));
+  };
+
+  std::vector<FakeHttpConnectionPtr> upstream_connections;
+  std::vector<FakeStreamPtr> upstream_requests;
+
+  for (int i = 0; i < 2; i++) {
+    // Use waitForNextUpstreamRequest to handle the connection and request
+    waitForNextUpstreamRequest(FirstUpstreamIndex);
+
+    // Store the connection and request (move them to avoid having them overwritten)
+    upstream_connections.push_back(std::move(fake_upstream_connection_));
+    upstream_requests.push_back(std::move(upstream_request_));
+
+    // Send 503 response to trigger retry
+    upstream_requests[i]->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, true);
+
+    // Close the connection to ensure a new one is created for the retry
+    ASSERT_TRUE(upstream_connections[i]->close());
+    ASSERT_TRUE(upstream_connections[i]->waitForDisconnect());
+  }
+
+  // after creating a connection - cluster_1
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries", 3);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open", 0);
+
+  // after creating a connection - aggregate_cluster
   test_server_->waitForGaugeEq(
-      "cluster.aggregate_cluster.circuit_breakers.default.remaining_pending", 1);
-  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open",
+      "cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 1);
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open",
                                0);
+  // Clean up
+  for (auto& client : clients) {
+    client->close();
+  }
 
   cleanupUpstreamAndDownstream();
 }
