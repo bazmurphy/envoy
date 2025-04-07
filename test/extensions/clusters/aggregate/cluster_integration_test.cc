@@ -1290,9 +1290,9 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
 
 // [ RUN      ] IpVersions/AggregateIntegrationTest.CircuitBreakerTestMaxPendingRequests/3
 // ---------- 00 TEST START
-// aggregate_cluster max_requests_per_connection: 1
+// aggregate_cluster max_requests_per_connection: 0
 // aggregate_cluster max_concurrent_streams: 1
-// cluster1_ max_requests_per_connection: 1
+// cluster1_ max_requests_per_connection: 0
 // cluster1_ max_concurrent_streams: 1
 // --------------------
 // BEFORE aggregate_cluster rq_pending_open: 0
@@ -1356,28 +1356,22 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
 // AFTER [response1] aggregate_cluster upstream_cx_total: 0
 // AFTER [response1] cluster_1 rq_pending_open: 0
 // AFTER [response1] cluster_1 remaining_pending: 1
-// AFTER [response1] cluster_1 upstream_rq_active: 1  <--- this is now presumably response2 (since we just completed response1)
+// AFTER [response1] cluster_1 upstream_rq_active: 0
 // AFTER [response1] cluster_1 upstream_rq_total: 2
-// AFTER [response1] cluster_1 upstream_rq_pending_active: 0   <--- there are no more pending requests active
+// AFTER [response1] cluster_1 upstream_rq_pending_active: 0
 // AFTER [response1] cluster_1 upstream_rq_pending_total: 2
 // AFTER [response1] cluster_1 upstream_cx_active: 1
-// AFTER [response1] cluster_1 upstream_cx_total: 2   <--- why was there 2 total connections now?
+// AFTER [response1] cluster_1 upstream_cx_total: 1
 // ---------- 99 TEST END
-// [external/com_google_absl/absl/flags/internal/flag.cc : 140] RAW: Restore saved value of envoy_quic_always_support_server_preferred_address to: true
-// [external/com_google_absl/absl/flags/internal/flag.cc : 140] RAW: Restore saved value of envoy_reloadable_features_runtime_initialized to: false
 // [external/com_google_absl/absl/flags/internal/flag.cc : 140] RAW: Restore saved value of envoy_reloadable_features_no_extension_lookup_by_name to: true
-// [       OK ] IpVersions/AggregateIntegrationTest.CircuitBreakerTestMaxPendingRequests/3 (448 ms)
-// [----------] 24 tests from IpVersions/AggregateIntegrationTest (10329 ms total)
+// [external/com_google_absl/absl/flags/internal/flag.cc : 140] RAW: Restore saved value of envoy_reloadable_features_runtime_initialized to: false
+// [external/com_google_absl/absl/flags/internal/flag.cc : 140] RAW: Restore saved value of envoy_quic_always_support_server_preferred_address to: true
+// [       OK ] IpVersions/AggregateIntegrationTest.CircuitBreakerTestMaxPendingRequests/3 (436 ms)
+// [----------] 24 tests from IpVersions/AggregateIntegrationTest (10008 ms total)
 
 // [----------] Global test environment tear-down
-// [==========] 24 tests from 1 test suite ran. (10329 ms total)
+// [==========] 24 tests from 1 test suite ran. (10008 ms total)
 // [  PASSED  ] 24 tests.
 // ================================================================================
-// INFO: Found 1 test target...
-// Target //test/extensions/clusters/aggregate:cluster_integration_test up-to-date:
-//   bazel-bin/test/extensions/clusters/aggregate/cluster_integration_test
-// INFO: Elapsed time: 71.244s, Critical Path: 70.86s
-// INFO: 4 processes: 1 internal, 3 linux-sandbox.
-// INFO: Build completed successfully, 4 total actions
 
-// Executed 1 out of 1 test: 1 test passes.
+// Executed 0 out of 1 test: 1 test passes.
