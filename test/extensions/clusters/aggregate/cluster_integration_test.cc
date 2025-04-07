@@ -1391,6 +1391,50 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
     // retriable_status_codes (repeated uint32) 
     // HTTP status codes that should trigger a retry in addition to those specified by retry_on.
 
+
+    // listeners in the config BEFORE
+    
+    // listeners:
+    // - name: http
+    //   address:
+    //     socket_address:
+    //       address: 127.0.0.1
+    //       port_value: 0
+    //   filter_chains:
+    //     filters:
+    //       name: http
+    //       typed_config:
+    //         "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+    //         stat_prefix: config_test
+    //         http_filters:
+    //           name: envoy.filters.http.router
+    //         codec_type: HTTP1
+    //         route_config:
+    //           name: route_config_0
+    //           validate_clusters: false
+    //           virtual_hosts:
+    //             name: integration
+    //             routes:
+    //             - route:
+    //                 cluster: cluster_1
+    //               match:
+    //                 prefix: "/cluster1"
+    //             - route:
+    //                 cluster: cluster_2
+    //               match:
+    //                 prefix: "/cluster2"
+    //             - route:
+    //                 cluster: aggregate_cluster
+    //                 retry_policy:
+    //                   retry_priority:
+    //                     name: envoy.retry_priorities.previous_priorities
+    //                     typed_config:
+    //                       "@type": type.googleapis.com/envoy.extensions.retry.priority.previous_priorities.v3.PreviousPrioritiesConfig
+    //                       update_frequency: 1
+    //               match:
+    //                 prefix: "/aggregatecluster"
+    //             domains: "*"
+
     auto* listener = static_resources->mutable_listeners(0);
     auto* filter_chain = listener->mutable_filter_chains(0);
     auto* filter = filter_chain->mutable_filters(0);
@@ -1402,12 +1446,11 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
 
     auto* virtual_host = http_connection_manager.mutable_route_config()->mutable_virtual_hosts(0);
 
-    std::cout << "virtual_host name() :" << virtual_host->name() << std::endl;
-
     // the aggregate_cluster route is the third route in the config at the top, so we need index 2
     auto* route = virtual_host->mutable_routes(2);
 
-    std::cout << "route name() :" << route->name() << std::endl;
+    // make sure this is actually changing the aggregate cluster o_o
+    std::cout << "route we are applying the retry changes to: " << route->match().prefix() << std::endl;
 
     // clear the "retry_priority:"
     route->mutable_route()->mutable_retry_policy()->clear_retry_priority();
@@ -1510,6 +1553,24 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
 
   // but also we need to be careful that the retry_policy is setup to send it to the same cluster again
 
+  std::cout << "--------------------" << std::endl;
+  std::cout << "DURING1 aggregate_cluster rq_retry_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open")->value() << std::endl;
+  std::cout << "DURING1 aggregate_cluster remaining_retries: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_retries")->value() << std::endl;
+  std::cout << "DURING1 aggregate_cluster upstream_rq_retry: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry")->value() << std::endl;
+  std::cout << "DURING1 aggregate_cluster upstream_rq_retry_limit_exceeded: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_limit_exceeded")->value() << std::endl;
+  std::cout << "DURING1 aggregate_cluster upstream_rq_retry_success: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_success")->value() << std::endl;
+  std::cout << "DURING1 aggregate_cluster upstream_rq_retry_overflow: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_overflow")->value() << std::endl;
+  std::cout << "DURING1 aggregate_cluster upstream_rq_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_total")->value() << std::endl;
+  std::cout << "DURING1 aggregate_cluster upstream_rq_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_rq_active")->value() << std::endl;
+  std::cout << "DURING1 cluster_1 rq_retry_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_retry_open")->value() << std::endl;
+  std::cout << "DURING1 cluster_1 remaining_retries: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_retries")->value() << std::endl;
+  std::cout << "DURING1 cluster_1 upstream_rq_retry: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry")->value() << std::endl;
+  std::cout << "DURING1 cluster_1 upstream_rq_retry_limit_exceeded: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_limit_exceeded")->value() << std::endl;
+  std::cout << "DURING1 cluster_1 upstream_rq_retry_success: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_success")->value() << std::endl;
+  std::cout << "DURING1 cluster_1 upstream_rq_retry_overflow: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_overflow")->value() << std::endl;
+  std::cout << "DURING1 cluster_1 upstream_rq_total: " << test_server_->counter("cluster.cluster_1.upstream_rq_total")->value() << std::endl;
+  std::cout << "DURING1 cluster_1 upstream_rq_active: " << test_server_->gauge("cluster.cluster_1.upstream_rq_active")->value() << std::endl;
+
   std::cout << "---------- 88 DO WE REACH HERE?" << std::endl;
 
   // the retry circuit breaker should now be triggered
@@ -1534,3 +1595,49 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
 
 } // namespace
 } // namespace Envoy
+
+
+// CURRENT LOG STATE:
+
+// [ RUN      ] IpVersions/AggregateIntegrationTest.CircuitBreakerTestMaxRetries/3
+// ---------- 00 TEST START
+// route we are applying the retry changes to: /aggregatecluster
+// --------------------
+// BEFORE aggregate_cluster rq_retry_open: 0
+// BEFORE aggregate_cluster remaining_retries: 1
+// BEFORE aggregate_cluster upstream_rq_retry: 0
+// BEFORE aggregate_cluster upstream_rq_retry_limit_exceeded: 0
+// BEFORE aggregate_cluster upstream_rq_retry_success: 0
+// BEFORE aggregate_cluster upstream_rq_retry_overflow: 0
+// BEFORE aggregate_cluster upstream_rq_total: 0
+// BEFORE aggregate_cluster upstream_rq_active: 0
+// BEFORE cluster_1 rq_retry_open: 0
+// BEFORE cluster_1 remaining_retries: 1
+// BEFORE cluster_1 upstream_rq_retry: 0
+// BEFORE cluster_1 upstream_rq_retry_limit_exceeded: 0
+// BEFORE cluster_1 upstream_rq_retry_success: 0
+// BEFORE cluster_1 upstream_rq_retry_overflow: 0
+// BEFORE cluster_1 upstream_rq_total: 0
+// BEFORE cluster_1 upstream_rq_active: 0
+// --------------------
+// DURING1 aggregate_cluster rq_retry_open: 1
+// DURING1 aggregate_cluster remaining_retries: 0
+// DURING1 aggregate_cluster upstream_rq_retry: 1
+// DURING1 aggregate_cluster upstream_rq_retry_limit_exceeded: 0
+// DURING1 aggregate_cluster upstream_rq_retry_success: 0
+// DURING1 aggregate_cluster upstream_rq_retry_overflow: 0
+// DURING1 aggregate_cluster upstream_rq_total: 0
+// DURING1 aggregate_cluster upstream_rq_active: 0
+// DURING1 cluster_1 rq_retry_open: 0
+// DURING1 cluster_1 remaining_retries: 1
+// DURING1 cluster_1 upstream_rq_retry: 0
+// DURING1 cluster_1 upstream_rq_retry_limit_exceeded: 0
+// DURING1 cluster_1 upstream_rq_retry_success: 0
+// DURING1 cluster_1 upstream_rq_retry_overflow: 0
+// DURING1 cluster_1 upstream_rq_total: 2
+// DURING1 cluster_1 upstream_rq_active: 1
+// ---------- 88 DO WE REACH HERE?
+// ./test/integration/server.h:462: Failure
+// Value of: TestUtility::waitForGaugeEq(statStore(), name, value, time_system_, timeout)
+//   Actual: false (timed out waiting for cluster.cluster_1.circuit_breakers.default.rq_retry_open to be 1, current value 0)
+// Expected: true
