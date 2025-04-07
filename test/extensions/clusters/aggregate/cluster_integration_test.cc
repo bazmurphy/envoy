@@ -1351,6 +1351,81 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
     //     .PackFrom(http_protocol_options);
     
     // std::cout << "aggregate_cluster max_concurrent_streams: " << http_protocol_options.explicit_http_config().http2_protocol_options().max_concurrent_streams().value() << std::endl;
+
+    // we need to be careful about the retry_policy in aggregate_cluster route config:
+    // because this is making the retry go to the second cluster (cluster_2) in the aggregate_cluster clusters list
+    // but that second cluster (cluster_2) doesn't exist because we specifically removed it in the config modifier above to keep this test simpler
+
+    // so we can use a different and simpler retry_policy
+
+    // https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/route/v3/route_components.proto#envoy-v3-api-msg-config-route-v3-retrypolicy
+
+    // {
+    //   "retry_on": ...,
+    //   "num_retries": {...},
+    //   "per_try_timeout": {...},
+    //   "per_try_idle_timeout": {...},
+    //   "retry_priority": {...},
+    //   "retry_host_predicate": [],
+    //   "retry_options_predicates": [],
+    //   "host_selection_retry_max_attempts": ...,
+    //   "retriable_status_codes": [],
+    //   "retry_back_off": {...},
+    //   "rate_limited_retry_back_off": {...},
+    //   "retriable_headers": [],
+    //   "retriable_request_headers": []
+    // }
+
+    // retry_on (string) 
+    // Specifies the conditions under which retry takes place. 
+    // These are the same conditions documented for x-envoy-retry-on and x-envoy-retry-grpc-on.
+
+    // num_retries (UInt32Value)
+    // Specifies the allowed number of retries. This parameter is optional and defaults to 1. 
+    // These are the same conditions documented for x-envoy-max-retries.
+
+    // retry_priority (config.route.v3.RetryPolicy.RetryPriority) 
+    // Specifies an implementation of a RetryPriority which is used to determine the distribution of load across priorities used for retries. 
+    // Refer to retry plugin configuration for more details.
+
+    // retriable_status_codes (repeated uint32) 
+    // HTTP status codes that should trigger a retry in addition to those specified by retry_on.
+
+    auto* listener = static_resources->mutable_listeners(0);
+    auto* filter_chain = listener->mutable_filter_chains(0);
+    auto* filter = filter_chain->mutable_filters(0);
+
+    envoy::extensions::filters::network::http_connection_manager::v3::HttpConnectionManager http_connection_manager;
+
+    // unpack it into the above object^
+    filter->mutable_typed_config()->UnpackTo(&http_connection_manager);
+
+    auto* virtual_host = http_connection_manager.mutable_route_config()->mutable_virtual_hosts(0);
+
+    std::cout << "virtual_host name() :" << virtual_host->name() << std::endl;
+
+    // the aggregate_cluster route is the third route in the config at the top, so we need index 2
+    auto* route = virtual_host->mutable_routes(2);
+
+    std::cout << "route name() :" << route->name() << std::endl;
+
+    // clear the "retry_priority:"
+    route->mutable_route()->mutable_retry_policy()->clear_retry_priority();
+    
+    // and then change it to:
+    // retry_policy:
+      // retry_on: 5xx
+      // num_retries: 3
+
+    route->mutable_route()->mutable_retry_policy()->mutable_retry_on()->assign("5xx");
+    route->mutable_route()->mutable_retry_policy()->mutable_num_retries()->set_value(3); // !! THINK ABOUT THIS CAREFULLY...
+
+    // pack it back
+    filter->mutable_typed_config()->PackFrom(http_connection_manager);
+
+    // !! alternatively we can, adjust the current one's update_frequency to 3?
+    // !! so that both the first and second retries are allowed to go to cluster_1
+    // this will matter when we have two underlying clusters...
   });
 
   initialize();
@@ -1422,28 +1497,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
   waitForNextUpstreamRequest(FirstUpstreamIndex);
 
   // respond with 503 so we can trigger the first retry
-  upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, false); // !! not sure what boolean to make end_stream here (for all the others its true, but in this case do we end stream or not?)
-
-  // we need to be careful about the retry_policy in aggregate_cluster route config:
-
-  // - route:
-  //     cluster: aggregate_cluster
-  //     retry_policy:
-  //       retry_priority:
-  //         name: envoy.retry_priorities.previous_priorities
-  //         typed_config:
-  //           "@type": type.googleapis.com/envoy.extensions.retry.priority.previous_priorities.v3.PreviousPrioritiesConfig
-  //           update_frequency: 1
-  //   match:
-  //     prefix: "/aggregatecluster"
-
-  // because this is making the retry go to the second cluster (cluster_2) in the aggregate_cluster clusters list
-  // but that second cluster (cluster_2) doesn't exist because we specifically removed it in the config modifier above
-
-  // so we could either 
-  // use a different (and simpler on 5xx) retry_policy ? 
-  // or adjust the current one's update_frequency to 3?
-  // so that both the first and second retries are allowed to go to cluster_1
+  upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, true); // remember true is the upstream saying it is done processing the request
 
   // wait for the first retry to reach cluster_1
   waitForNextUpstreamRequest(FirstUpstreamIndex);
@@ -1451,24 +1505,29 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
   // ^but this gives a "timed out waiting for new stream" error:
   // [2025-04-07 13:51:50.404][12][critical][assert] [test/integration/http_integration.cc:606] assert failure: result. Details: Timed out waiting for new stream.
 
+  // this is because the stream is torn down when the 503 is returned
+  // and a new stream is created
+
+  // but also we need to be careful that the retry_policy is setup to send it to the same cluster again
+
   std::cout << "---------- 88 DO WE REACH HERE?" << std::endl;
 
-  // // the retry circuit breaker should now be triggered
-  // test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open", 1);
-  // test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries", 0);
+  // the retry circuit breaker should now be triggered
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open", 1);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries", 0);
 
-  // EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_retry_open")->value(), 1);
-  // EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_retries")->value(), 0);
+  EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_retry_open")->value(), 1);
+  EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_retries")->value(), 0);
 
-  // // respond with another 503 to trigger a second retry
-  // upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, true);
+  // respond with another 503 to trigger a second retry
+  upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, true);
 
-  // // the second retry should be automatically rejected, because the circuit breaker is triggered
-  // test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow", 1);
+  // the second retry should be automatically rejected, because the circuit breaker is triggered
+  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow", 1);
 
-  // // the first request should complete with a 503
-  // ASSERT_TRUE(aggregate_cluster_response1->waitForEndStream());
-  // EXPECT_EQ("503", aggregate_cluster_response1->headers().getStatusValue());
+  // the first request should complete with a 503
+  ASSERT_TRUE(aggregate_cluster_response1->waitForEndStream());
+  EXPECT_EQ("503", aggregate_cluster_response1->headers().getStatusValue());
  
   std::cout << "---------- 99 TEST END" << std::endl;
 }
