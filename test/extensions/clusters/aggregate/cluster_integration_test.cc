@@ -1153,7 +1153,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
   codec_client_ = makeHttpConnection(lookupPort("http"));
 
   // make the first request
-  // the connection should now be "saturated" since it will only allow 1 concurrent stream and 1 request
+  // the connection should now be "saturated" since it will only allow 1 concurrent stream
   // now subsequent requests should go into a "pending" state
   auto aggregate_cluster_response1 = codec_client_->makeHeaderOnlyRequest(
     Http::TestRequestHeaderMapImpl{{":method", "GET"},{":path", "/aggregatecluster"},{":scheme", "http"},{":authority", "host"}}
@@ -1234,16 +1234,10 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
   test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_pending_overflow", 1);
   EXPECT_EQ(test_server_->counter("cluster.cluster_1.upstream_rq_pending_overflow")->value(), 1);
   
-  // now we need to revert to the default state...
-
   // complete the first request/response
   upstream_request_->encodeHeaders(default_response_headers_, true);
   ASSERT_TRUE(aggregate_cluster_response1->waitForEndStream());
   EXPECT_EQ("200", aggregate_cluster_response1->headers().getStatusValue());
-
-  // !!! NOW I UNDERSTAND THE CONNECTION / STREAM / REQUEST CYCLE in relation to max_request_per_connection
-  // the connection gets torn down after it reaches it max number
-  // so a new connection has to be created in order for the request 2 to get through to the upstream
 
   // wait for the second request to reach cluster_1
   waitForNextUpstreamRequest(FirstUpstreamIndex);
