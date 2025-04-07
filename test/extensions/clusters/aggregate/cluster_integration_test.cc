@@ -803,9 +803,9 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnections) {
     aggregate_cluster_circuit_breakers_threshold_default->set_track_remaining(true);
 
     // create a new HttpProtocolOptions
-    envoy::extensions::upstreams::http::v3::HttpProtocolOptions http_protocol_options; // make a new object
+    envoy::extensions::upstreams::http::v3::HttpProtocolOptions http_protocol_options;
     // set http2_protocol_options max_concurrent_streams to 1
-    http_protocol_options.mutable_explicit_http_config()->mutable_http2_protocol_options()->mutable_max_concurrent_streams()->set_value(1);;
+    http_protocol_options.mutable_explicit_http_config()->mutable_http2_protocol_options()->mutable_max_concurrent_streams()->set_value(1);
     // add the http_protocol_options to aggregate_cluster
     // (found this example here: test/integration/shadow_policy_integration_test.cc - we have to do this packing stuff because the protobuf type is Any -_-)
     (*aggregate_cluster->mutable_typed_extension_protocol_options())
@@ -1063,7 +1063,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
     auto* aggregate_cluster_circuit_breakers = aggregate_cluster->mutable_circuit_breakers();
     auto* aggregate_cluster_circuit_breakers_threshold_default = aggregate_cluster_circuit_breakers->add_thresholds();
     aggregate_cluster_circuit_breakers_threshold_default->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-    aggregate_cluster_circuit_breakers_threshold_default->mutable_max_connections()->set_value(1); // LETS LIMIT THE CONNECTIONS TO 1 SO WE CAN (IN THEORY) QUEUE UP PENDING REQUESTS ON THAT SINGLE CONNECTION
+    aggregate_cluster_circuit_breakers_threshold_default->mutable_max_connections()->set_value(1); // limit the conections to 1 so we can queue up pending requests on that single connection
     aggregate_cluster_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(1); // set to 1
     aggregate_cluster_circuit_breakers_threshold_default->mutable_max_requests()->set_value(1000000000); // high value
     aggregate_cluster_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1000000000); // high value
@@ -1079,8 +1079,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
     (*aggregate_cluster->mutable_typed_extension_protocol_options())
       ["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]
         .PackFrom(http_protocol_options);
-
-    std::cout << "aggregate_cluster max_requests_per_connection: " << http_protocol_options.common_http_protocol_options().max_requests_per_connection().value() << std::endl;
+    
     std::cout << "aggregate_cluster max_concurrent_streams: " << http_protocol_options.explicit_http_config().http2_protocol_options().max_concurrent_streams().value() << std::endl;
   });
 
@@ -1089,7 +1088,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
   auto* cluster1_circuit_breakers = cluster1_.mutable_circuit_breakers();
   auto* cluster1_circuit_breakers_threshold_default = cluster1_circuit_breakers->add_thresholds();
   cluster1_circuit_breakers_threshold_default->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-  cluster1_circuit_breakers_threshold_default->mutable_max_connections()->set_value(1); // LETS LIMIT THE CONNECTIONS TO 1 SO WE CAN (IN THEORY) QUEUE UP PENDING REQUESTS ON THAT SINGLE CONNECTION
+  cluster1_circuit_breakers_threshold_default->mutable_max_connections()->set_value(1); // limit the conections to 1 so we can queue up pending requests on that single connection
   cluster1_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(1); // set to 1
   cluster1_circuit_breakers_threshold_default->mutable_max_requests()->set_value(1000000000); // high value
   cluster1_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1000000000); // high value
@@ -1102,7 +1101,6 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
     ["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]
       .PackFrom(http_protocol_options);
 
-  std::cout << "cluster1_ max_requests_per_connection: " << http_protocol_options.common_http_protocol_options().max_requests_per_connection().value() << std::endl;
   std::cout << "cluster1_ max_concurrent_streams: " << http_protocol_options.explicit_http_config().http2_protocol_options().max_concurrent_streams().value() << std::endl;
 
   EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "55", {}, {}, {}));
@@ -1287,97 +1285,3 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
 
 } // namespace
 } // namespace Envoy
-
-// LOG OUTPUT: 
-
-// [ RUN      ] IpVersions/AggregateIntegrationTest.CircuitBreakerTestMaxPendingRequests/3
-// ---------- 00 TEST START
-// aggregate_cluster max_requests_per_connection: 0
-// aggregate_cluster max_concurrent_streams: 1
-// cluster1_ max_requests_per_connection: 0
-// cluster1_ max_concurrent_streams: 1
-// --------------------
-// BEFORE aggregate_cluster rq_pending_open: 0
-// BEFORE aggregate_cluster remaining_pending: 1
-// BEFORE aggregate_cluster upstream_rq_active: 0
-// BEFORE aggregate_cluster upstream_rq_total: 0
-// BEFORE aggregate_cluster upstream_rq_pending_active: 0
-// BEFORE aggregate_cluster upstream_rq_pending_total: 0
-// BEFORE aggregate_cluster upstream_cx_active: 0
-// BEFORE aggregate_cluster upstream_cx_total: 0
-// BEFORE cluster_1 rq_pending_open: 0
-// BEFORE cluster_1 remaining_pending: 1
-// BEFORE cluster_1 upstream_rq_active: 0
-// BEFORE cluster_1 upstream_rq_total: 0
-// BEFORE cluster_1 upstream_rq_pending_active: 0
-// BEFORE cluster_1 upstream_rq_pending_total: 0
-// BEFORE cluster_1 upstream_cx_active: 0
-// BEFORE cluster_1 upstream_cx_total: 0
-// --------------------
-// DURING [request1] aggregate_cluster rq_pending_open: 0
-// DURING [request1] aggregate_cluster remaining_pending: 1
-// DURING [request1] aggregate_cluster upstream_rq_active: 0
-// DURING [request1] aggregate_cluster upstream_rq_total: 0
-// DURING [request1] aggregate_cluster upstream_rq_pending_active: 0
-// DURING [request1] aggregate_cluster upstream_rq_pending_total: 0
-// DURING [request1] aggregate_cluster upstream_cx_active: 0
-// DURING [request1] aggregate_cluster upstream_cx_total: 0
-// DURING [request1] cluster_1 rq_pending_open: 0
-// DURING [request1] cluster_1 remaining_pending: 1
-// DURING [request1] cluster_1 upstream_rq_active: 1
-// DURING [request1] cluster_1 upstream_rq_total: 1
-// DURING [request1] cluster_1 upstream_rq_pending_active: 0
-// DURING [request1] cluster_1 upstream_rq_pending_total: 1
-// DURING [request1] cluster_1 upstream_cx_active: 1
-// DURING [request1] cluster_1 upstream_cx_total: 1
-// --------------------
-// DURING [request2] aggregate_cluster rq_pending_open: 0
-// DURING [request2] aggregate_cluster remaining_pending: 1
-// DURING [request2] aggregate_cluster upstream_rq_active: 0
-// DURING [request2] aggregate_cluster upstream_rq_total: 0
-// DURING [request2] aggregate_cluster upstream_rq_pending_active: 0
-// DURING [request2] aggregate_cluster upstream_rq_pending_total: 0
-// DURING [request2] aggregate_cluster upstream_cx_active: 0
-// DURING [request2] aggregate_cluster upstream_cx_total: 0
-// DURING [request2] cluster_1 rq_pending_open: 1
-// DURING [request2] cluster_1 remaining_pending: 0
-// DURING [request2] cluster_1 upstream_rq_active: 1
-// DURING [request2] cluster_1 upstream_rq_total: 1
-// DURING [request2] cluster_1 upstream_rq_pending_active: 1
-// DURING [request2] cluster_1 upstream_rq_pending_total: 2
-// DURING [request2] cluster_1 upstream_cx_active: 1
-// DURING [request2] cluster_1 upstream_cx_total: 1
-// --------------------
-// AFTER [all responses] aggregate_cluster rq_pending_open: 0
-// AFTER [all responses] aggregate_cluster remaining_pending: 1
-// AFTER [all responses] aggregate_cluster upstream_rq_active: 0
-// AFTER [all responses] aggregate_cluster upstream_rq_total: 0
-// AFTER [all responses] aggregate_cluster upstream_rq_pending_active: 0
-// AFTER [all responses] aggregate_cluster upstream_rq_pending_total: 0
-// AFTER [all responses] aggregate_cluster upstream_cx_active: 0
-// AFTER [all responses] aggregate_cluster upstream_cx_total: 0
-// AFTER [all responses] cluster_1 rq_pending_open: 0
-// AFTER [all responses] cluster_1 remaining_pending: 1
-// AFTER [all responses] cluster_1 upstream_rq_active: 0
-// AFTER [all responses] cluster_1 upstream_rq_total: 2
-// AFTER [all responses] cluster_1 upstream_rq_pending_active: 0
-// AFTER [all responses] cluster_1 upstream_rq_pending_total: 2
-// AFTER [all responses] cluster_1 upstream_cx_active: 1
-// AFTER [all responses] cluster_1 upstream_cx_total: 1
-// ---------- 99 TEST END
-// [external/com_google_absl/absl/flags/internal/flag.cc : 140] RAW: Restore saved value of envoy_quic_always_support_server_preferred_address to: true
-// [external/com_google_absl/absl/flags/internal/flag.cc : 140] RAW: Restore saved value of envoy_reloadable_features_no_extension_lookup_by_name to: true
-// [external/com_google_absl/absl/flags/internal/flag.cc : 140] RAW: Restore saved value of envoy_reloadable_features_runtime_initialized to: false
-// [       OK ] IpVersions/AggregateIntegrationTest.CircuitBreakerTestMaxPendingRequests/3 (449 ms)
-// [----------] 24 tests from IpVersions/AggregateIntegrationTest (10067 ms total)
-
-// [----------] Global test environment tear-down
-// [==========] 24 tests from 1 test suite ran. (10068 ms total)
-// [  PASSED  ] 24 tests.
-// ================================================================================
-// INFO: Found 1 test target...
-// Target //test/extensions/clusters/aggregate:cluster_integration_test up-to-date:
-//   bazel-bin/test/extensions/clusters/aggregate/cluster_integration_test
-// INFO: Elapsed time: 72.156s, Critical Path: 71.87s
-// INFO: 4 processes: 1 internal, 3 linux-sandbox.
-// INFO: Build completed successfully, 4 total actions
