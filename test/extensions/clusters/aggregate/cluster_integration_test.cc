@@ -1075,7 +1075,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
 
     envoy::extensions::upstreams::http::v3::HttpProtocolOptions http_protocol_options;
     // set the max_requests_per_connection to 1
-    http_protocol_options.mutable_common_http_protocol_options()->mutable_max_requests_per_connection()->set_value(1);
+    // http_protocol_options.mutable_common_http_protocol_options()->mutable_max_requests_per_connection()->set_value(1);
     // set the max_concurrent_streams to 1
     http_protocol_options.mutable_explicit_http_config()->mutable_http2_protocol_options()->mutable_max_concurrent_streams()->set_value(1);
     (*aggregate_cluster->mutable_typed_extension_protocol_options())
@@ -1099,7 +1099,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
 
   envoy::extensions::upstreams::http::v3::HttpProtocolOptions http_protocol_options;
   // set the max_requests_per_connection to 1
-  http_protocol_options.mutable_common_http_protocol_options()->mutable_max_requests_per_connection()->set_value(1);
+  // http_protocol_options.mutable_common_http_protocol_options()->mutable_max_requests_per_connection()->set_value(1);
   // set the max_concurrent_streams to 1
   http_protocol_options.mutable_explicit_http_config()->mutable_http2_protocol_options()->mutable_max_concurrent_streams()->set_value(1);
   (*cluster1_.mutable_typed_extension_protocol_options())
@@ -1234,8 +1234,6 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
   test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_pending_overflow", 1);
   EXPECT_EQ(test_server_->counter("cluster.cluster_1.upstream_rq_pending_overflow")->value(), 1);
   
-  // --- from here is the bastard
-
   // now we need to revert to the default state...
 
   // complete the first request/response
@@ -1243,17 +1241,17 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
   ASSERT_TRUE(aggregate_cluster_response1->waitForEndStream());
   EXPECT_EQ("200", aggregate_cluster_response1->headers().getStatusValue());
 
-  // NOW I UNDERSTAND THE CONNECTION / STREAM / REQUEST CYCLE in relation to max_request_per_connection
+  // !!! NOW I UNDERSTAND THE CONNECTION / STREAM / REQUEST CYCLE in relation to max_request_per_connection
   // the connection gets torn down after it reaches it max number
   // so a new connection has to be created in order for the request 2 to get through to the upstream
 
   // wait for the second request to reach cluster_1
-  // waitForNextUpstreamRequest(FirstUpstreamIndex);
+  waitForNextUpstreamRequest(FirstUpstreamIndex);
 
   // complete the second request/response
-  // upstream_request_->encodeHeaders(default_response_headers_, true);
-  // ASSERT_TRUE(aggregate_cluster_response2->waitForEndStream());
-  // EXPECT_EQ("200", aggregate_cluster_response2->headers().getStatusValue());
+  upstream_request_->encodeHeaders(default_response_headers_, true);
+  ASSERT_TRUE(aggregate_cluster_response2->waitForEndStream());
+  EXPECT_EQ("200", aggregate_cluster_response2->headers().getStatusValue());
 
   std::cout << "--------------------" << std::endl;
 
