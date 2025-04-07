@@ -1069,13 +1069,11 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
     aggregate_cluster_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1000000000); // high value
     aggregate_cluster_circuit_breakers_threshold_default->set_track_remaining(true);
 
-    // when i tried to use max_concurrent_streams with value 0
+    // note: when i tried to use max_concurrent_streams with value 0
     // i got the error: "must be inside range [1, 2147483647]"
     // so we must to set max_concurrent_streams as 1
 
     envoy::extensions::upstreams::http::v3::HttpProtocolOptions http_protocol_options;
-    // set the max_requests_per_connection to 1
-    // http_protocol_options.mutable_common_http_protocol_options()->mutable_max_requests_per_connection()->set_value(1);
     // set the max_concurrent_streams to 1
     http_protocol_options.mutable_explicit_http_config()->mutable_http2_protocol_options()->mutable_max_concurrent_streams()->set_value(1);
     (*aggregate_cluster->mutable_typed_extension_protocol_options())
@@ -1098,8 +1096,6 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
   cluster1_circuit_breakers_threshold_default->set_track_remaining(true);
 
   envoy::extensions::upstreams::http::v3::HttpProtocolOptions http_protocol_options;
-  // set the max_requests_per_connection to 1
-  // http_protocol_options.mutable_common_http_protocol_options()->mutable_max_requests_per_connection()->set_value(1);
   // set the max_concurrent_streams to 1
   http_protocol_options.mutable_explicit_http_config()->mutable_http2_protocol_options()->mutable_max_concurrent_streams()->set_value(1);
   (*cluster1_.mutable_typed_extension_protocol_options())
