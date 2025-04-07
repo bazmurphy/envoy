@@ -1115,6 +1115,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
   test_server_->waitForGaugeGe("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending", 0);
   test_server_->waitForGaugeGe("cluster.cluster_1.circuit_breakers.default.remaining_pending", 0);
 
+  // make sure we are in the default state for both circuit breakers
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open", 0);
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 0);
 
@@ -1185,8 +1186,8 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
     Http::TestRequestHeaderMapImpl{{":method", "GET"},{":path", "/aggregatecluster"},{":scheme", "http"},{":authority", "host"}}
   );
 
-  test_server_->waitForGaugeGe("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open", 0);
-  test_server_->waitForGaugeGe("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 1); // !! the circuit breaker should now be triggered
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open", 0);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 1); // !! the circuit breaker should now be triggered
   
   EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value(), 0);
   EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value(), 1);
@@ -1244,6 +1245,17 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
   EXPECT_EQ("200", aggregate_cluster_response2->headers().getStatusValue());
 
   std::cout << "--------------------" << std::endl;
+
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open", 0);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 0); // the circuit breaker should have returned to its initial state
+
+  // aggregate_cluster max_connections
+  EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value(), 0);
+  EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value(), 1);
+  
+  // cluster_1 max_connections
+  EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value(), 0); // the circuit breaker should have returned to its initial state
+  EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value(), 1);
 
   std::cout << "AFTER [all responses] aggregate_cluster rq_pending_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value() << std::endl;
   std::cout << "AFTER [all responses] aggregate_cluster remaining_pending: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value() << std::endl;
@@ -1353,3 +1365,19 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
 // AFTER [all responses] cluster_1 upstream_cx_active: 1
 // AFTER [all responses] cluster_1 upstream_cx_total: 1
 // ---------- 99 TEST END
+// [external/com_google_absl/absl/flags/internal/flag.cc : 140] RAW: Restore saved value of envoy_quic_always_support_server_preferred_address to: true
+// [external/com_google_absl/absl/flags/internal/flag.cc : 140] RAW: Restore saved value of envoy_reloadable_features_no_extension_lookup_by_name to: true
+// [external/com_google_absl/absl/flags/internal/flag.cc : 140] RAW: Restore saved value of envoy_reloadable_features_runtime_initialized to: false
+// [       OK ] IpVersions/AggregateIntegrationTest.CircuitBreakerTestMaxPendingRequests/3 (449 ms)
+// [----------] 24 tests from IpVersions/AggregateIntegrationTest (10067 ms total)
+
+// [----------] Global test environment tear-down
+// [==========] 24 tests from 1 test suite ran. (10068 ms total)
+// [  PASSED  ] 24 tests.
+// ================================================================================
+// INFO: Found 1 test target...
+// Target //test/extensions/clusters/aggregate:cluster_integration_test up-to-date:
+//   bazel-bin/test/extensions/clusters/aggregate/cluster_integration_test
+// INFO: Elapsed time: 72.156s, Critical Path: 71.87s
+// INFO: 4 processes: 1 internal, 3 linux-sandbox.
+// INFO: Build completed successfully, 4 total actions
