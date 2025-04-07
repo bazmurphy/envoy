@@ -1249,25 +1249,25 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
 
   std::cout << "--------------------" << std::endl;
 
-  std::cout << "AFTER [response1] aggregate_cluster rq_pending_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value() << std::endl;
-  std::cout << "AFTER [response1] aggregate_cluster remaining_pending: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value() << std::endl;
+  std::cout << "AFTER [all responses] aggregate_cluster rq_pending_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value() << std::endl;
+  std::cout << "AFTER [all responses] aggregate_cluster remaining_pending: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value() << std::endl;
 
-  std::cout << "AFTER [response1] aggregate_cluster upstream_rq_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_rq_active")->value() << std::endl;
-  std::cout << "AFTER [response1] aggregate_cluster upstream_rq_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_total")->value() << std::endl;
-  std::cout << "AFTER [response1] aggregate_cluster upstream_rq_pending_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_rq_pending_active")->value() << std::endl;
-  std::cout << "AFTER [response1] aggregate_cluster upstream_rq_pending_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_pending_total")->value() << std::endl;
-  std::cout << "AFTER [response1] aggregate_cluster upstream_cx_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_cx_active")->value() << std::endl;
-  std::cout << "AFTER [response1] aggregate_cluster upstream_cx_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_cx_total")->value() << std::endl;
+  std::cout << "AFTER [all responses] aggregate_cluster upstream_rq_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_rq_active")->value() << std::endl;
+  std::cout << "AFTER [all responses] aggregate_cluster upstream_rq_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_total")->value() << std::endl;
+  std::cout << "AFTER [all responses] aggregate_cluster upstream_rq_pending_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_rq_pending_active")->value() << std::endl;
+  std::cout << "AFTER [all responses] aggregate_cluster upstream_rq_pending_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_pending_total")->value() << std::endl;
+  std::cout << "AFTER [all responses] aggregate_cluster upstream_cx_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_cx_active")->value() << std::endl;
+  std::cout << "AFTER [all responses] aggregate_cluster upstream_cx_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_cx_total")->value() << std::endl;
 
-  std::cout << "AFTER [response1] cluster_1 rq_pending_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value() << std::endl;
-  std::cout << "AFTER [response1] cluster_1 remaining_pending: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value() << std::endl;
+  std::cout << "AFTER [all responses] cluster_1 rq_pending_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value() << std::endl;
+  std::cout << "AFTER [all responses] cluster_1 remaining_pending: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value() << std::endl;
 
-  std::cout << "AFTER [response1] cluster_1 upstream_rq_active: " << test_server_->gauge("cluster.cluster_1.upstream_rq_active")->value() << std::endl;
-  std::cout << "AFTER [response1] cluster_1 upstream_rq_total: " << test_server_->counter("cluster.cluster_1.upstream_rq_total")->value() << std::endl;
-  std::cout << "AFTER [response1] cluster_1 upstream_rq_pending_active: " << test_server_->gauge("cluster.cluster_1.upstream_rq_pending_active")->value() << std::endl;
-  std::cout << "AFTER [response1] cluster_1 upstream_rq_pending_total: " << test_server_->counter("cluster.cluster_1.upstream_rq_pending_total")->value() << std::endl;
-  std::cout << "AFTER [response1] cluster_1 upstream_cx_active: " << test_server_->gauge("cluster.cluster_1.upstream_cx_active")->value() << std::endl;
-  std::cout << "AFTER [response1] cluster_1 upstream_cx_total: " << test_server_->counter("cluster.cluster_1.upstream_cx_total")->value() << std::endl;
+  std::cout << "AFTER [all responses] cluster_1 upstream_rq_active: " << test_server_->gauge("cluster.cluster_1.upstream_rq_active")->value() << std::endl;
+  std::cout << "AFTER [all responses] cluster_1 upstream_rq_total: " << test_server_->counter("cluster.cluster_1.upstream_rq_total")->value() << std::endl;
+  std::cout << "AFTER [all responses] cluster_1 upstream_rq_pending_active: " << test_server_->gauge("cluster.cluster_1.upstream_rq_pending_active")->value() << std::endl;
+  std::cout << "AFTER [all responses] cluster_1 upstream_rq_pending_total: " << test_server_->counter("cluster.cluster_1.upstream_rq_pending_total")->value() << std::endl;
+  std::cout << "AFTER [all responses] cluster_1 upstream_cx_active: " << test_server_->gauge("cluster.cluster_1.upstream_cx_active")->value() << std::endl;
+  std::cout << "AFTER [all responses] cluster_1 upstream_cx_total: " << test_server_->counter("cluster.cluster_1.upstream_cx_total")->value() << std::endl;
 
   cleanupUpstreamAndDownstream();
 
@@ -1340,32 +1340,20 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
 // DURING [request2] cluster_1 upstream_cx_active: 1
 // DURING [request2] cluster_1 upstream_cx_total: 1
 // --------------------
-// AFTER [response1] aggregate_cluster rq_pending_open: 0
-// AFTER [response1] aggregate_cluster remaining_pending: 1
-// AFTER [response1] aggregate_cluster upstream_rq_active: 0
-// AFTER [response1] aggregate_cluster upstream_rq_total: 0
-// AFTER [response1] aggregate_cluster upstream_rq_pending_active: 0
-// AFTER [response1] aggregate_cluster upstream_rq_pending_total: 0
-// AFTER [response1] aggregate_cluster upstream_cx_active: 0
-// AFTER [response1] aggregate_cluster upstream_cx_total: 0
-// AFTER [response1] cluster_1 rq_pending_open: 0
-// AFTER [response1] cluster_1 remaining_pending: 1
-// AFTER [response1] cluster_1 upstream_rq_active: 0
-// AFTER [response1] cluster_1 upstream_rq_total: 2
-// AFTER [response1] cluster_1 upstream_rq_pending_active: 0
-// AFTER [response1] cluster_1 upstream_rq_pending_total: 2
-// AFTER [response1] cluster_1 upstream_cx_active: 1
-// AFTER [response1] cluster_1 upstream_cx_total: 1
+// AFTER [all responses] aggregate_cluster rq_pending_open: 0
+// AFTER [all responses] aggregate_cluster remaining_pending: 1
+// AFTER [all responses] aggregate_cluster upstream_rq_active: 0
+// AFTER [all responses] aggregate_cluster upstream_rq_total: 0
+// AFTER [all responses] aggregate_cluster upstream_rq_pending_active: 0
+// AFTER [all responses] aggregate_cluster upstream_rq_pending_total: 0
+// AFTER [all responses] aggregate_cluster upstream_cx_active: 0
+// AFTER [all responses] aggregate_cluster upstream_cx_total: 0
+// AFTER [all responses] cluster_1 rq_pending_open: 0
+// AFTER [all responses] cluster_1 remaining_pending: 1
+// AFTER [all responses] cluster_1 upstream_rq_active: 0
+// AFTER [all responses] cluster_1 upstream_rq_total: 2
+// AFTER [all responses] cluster_1 upstream_rq_pending_active: 0
+// AFTER [all responses] cluster_1 upstream_rq_pending_total: 2
+// AFTER [all responses] cluster_1 upstream_cx_active: 1
+// AFTER [all responses] cluster_1 upstream_cx_total: 1
 // ---------- 99 TEST END
-// [external/com_google_absl/absl/flags/internal/flag.cc : 140] RAW: Restore saved value of envoy_reloadable_features_no_extension_lookup_by_name to: true
-// [external/com_google_absl/absl/flags/internal/flag.cc : 140] RAW: Restore saved value of envoy_reloadable_features_runtime_initialized to: false
-// [external/com_google_absl/absl/flags/internal/flag.cc : 140] RAW: Restore saved value of envoy_quic_always_support_server_preferred_address to: true
-// [       OK ] IpVersions/AggregateIntegrationTest.CircuitBreakerTestMaxPendingRequests/3 (436 ms)
-// [----------] 24 tests from IpVersions/AggregateIntegrationTest (10008 ms total)
-
-// [----------] Global test environment tear-down
-// [==========] 24 tests from 1 test suite ran. (10008 ms total)
-// [  PASSED  ] 24 tests.
-// ================================================================================
-
-// Executed 0 out of 1 test: 1 test passes.
