@@ -188,11 +188,6 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Combine(testing::ValuesIn(TestEnvironment::getIpVersionsForTest()), testing::Bool()));
 
 TEST_P(AggregateIntegrationTest, CircuitBreakingChildLimitLowerThanAggregateMaxConn) {
-  // 1. Add circuit breaker config for aggregate cluster - done
-  // 2. Add circuit breaker config for cluster1_ and/or cluster2_ clusters - done
-  // 3. Check the circuit breaker stats for the aggregate cluster - done
-  // 4. Check the circuit breaker stats for the cluster1_ and cluster2_ - done
-  // 5. Send a request - done
 
   // Add circuit breaker config to aggregate cluster
   config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
@@ -225,6 +220,8 @@ TEST_P(AggregateIntegrationTest, CircuitBreakingChildLimitLowerThanAggregateMaxC
                                10);
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.cx_open", 0);
 
+  // this function create connection to Envoy, send request to Envoy and then Envoy creates and send
+  // request to upstream
   testRouterHeaderOnlyRequestAndResponse(nullptr, FirstUpstreamIndex, "/aggregatecluster");
 
   // after creating a connection - cluster_1
@@ -317,12 +314,17 @@ TEST_P(AggregateIntegrationTest, CircuitBreakingChildLimitLowerThanAggregateMaxR
                                10);
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_open", 0);
 
+  // creates connection to Envoy - HTTP1.1
   codec_client_ = makeHttpConnection(lookupPort("http"));
+  // send request to Envoy
   auto response = codec_client_->makeHeaderOnlyRequest(
       Http::TestRequestHeaderMapImpl{{":method", "GET"},
                                      {":path", "/aggregatecluster"},
                                      {":scheme", "http"},
                                      {":authority", "host"}});
+
+  // creates connection between Envoy and the upstream (cluster_1) - HTTP2 and send request to
+  // cluster_1
   waitForNextUpstreamRequest(FirstUpstreamIndex);
 
   // after sending a request - cluster_1
