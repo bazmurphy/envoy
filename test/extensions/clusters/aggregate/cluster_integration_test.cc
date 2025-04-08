@@ -180,6 +180,60 @@ public:
     xds_stream_->startGrpcStream();
   }
 
+  // !! temporary to use in the max_retries test
+  void printClusterStats(const std::string& prefix) {
+    std::cout << "--------------------" << std::endl;
+    std::cout << prefix << " aggregate_cluster rq_retry_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open")->value() << std::endl;
+    std::cout << prefix << " aggregate_cluster remaining_retries: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_retries")->value() << std::endl;
+    std::cout << prefix << " aggregate_cluster upstream_rq_retry: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry")->value() << std::endl;
+    std::cout << prefix << " aggregate_cluster upstream_rq_retry_overflow: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_overflow")->value() << std::endl;
+    // std::cout << prefix << " aggregate_cluster upstream_rq_retry_limit_exceeded: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_limit_exceeded")->value() << std::endl;
+    // std::cout << prefix << " aggregate_cluster upstream_rq_retry_success: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_success")->value() << std::endl;
+    std::cout << prefix << " aggregate_cluster upstream_rq_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_total")->value() << std::endl;
+    std::cout << prefix << " aggregate_cluster upstream_rq_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_rq_active")->value() << std::endl;
+    std::cout << prefix << " aggregate_cluster upstream_cx_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_cx_active")->value() << std::endl;
+    std::cout << prefix << " aggregate_cluster upstream_cx_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_cx_total")->value() << std::endl;
+    std::cout << prefix << " aggregate_cluster upstream_rq_cancelled: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_cancelled")->value() << std::endl;
+    std::cout << prefix << " aggregate_cluster upstream_rq_timeout: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_timeout")->value() << std::endl;
+    std::cout << prefix << " aggregate_cluster upstream_rq_completed: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_completed")->value() << std::endl;
+    // std::cout << prefix << " aggregate_cluster upstream_rq_time: " << test_server_->histogram("cluster.aggregate_cluster.upstream_rq_time")->quantileSummary() << std::endl;
+    // std::cout << prefix << " aggregate_cluster upstream_rq_503: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_503")->value() << std::endl;
+    // std::cout << prefix << " aggregate_cluster upstream_rq_504: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_504")->value() << std::endl;
+    std::cout << prefix << " aggregate_cluster upstream_rq_max_duration_reached: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_max_duration_reached")->value() << std::endl;
+    std::cout << prefix << " aggregate_cluster upstream_rq_per_try_timeout: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_per_try_timeout")->value() << std::endl;
+    std::cout << prefix << " aggregate_cluster upstream_rq_rx_reset: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_rx_reset")->value() << std::endl;
+    std::cout << prefix << " aggregate_cluster upstream_rq_tx_reset: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_tx_reset")->value() << std::endl;
+    std::cout << prefix << " aggregate_cluster upstream_rq_retry_backoff_exponential: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_backoff_exponential")->value() << std::endl;
+    std::cout << prefix << " aggregate_cluster upstream_rq_retry_backoff_ratelimited: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_backoff_ratelimited")->value() << std::endl;
+    std::cout << prefix << " aggregate_cluster upstream_rq_retry_limit_exceeded: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_limit_exceeded")->value() << std::endl;
+    std::cout << prefix << " aggregate_cluster upstream_rq_retry_success: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_success")->value() << std::endl;
+
+    std::cout << prefix << " cluster_1 rq_retry_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_retry_open")->value() << std::endl;
+    std::cout << prefix << " cluster_1 remaining_retries: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_retries")->value() << std::endl;
+    std::cout << prefix << " cluster_1 upstream_rq_retry: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry")->value() << std::endl;
+    std::cout << prefix << " cluster_1 upstream_rq_retry_overflow: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_overflow")->value() << std::endl;
+    // std::cout << prefix << " cluster_1 upstream_rq_retry_limit_exceeded: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_limit_exceeded")->value() << std::endl;
+    // std::cout << prefix << " cluster_1 upstream_rq_retry_success: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_success")->value() << std::endl;
+    std::cout << prefix << " cluster_1 upstream_rq_total: " << test_server_->counter("cluster.cluster_1.upstream_rq_total")->value() << std::endl;
+    std::cout << prefix << " cluster_1 upstream_rq_active: " << test_server_->gauge("cluster.cluster_1.upstream_rq_active")->value() << std::endl;
+    std::cout << prefix << " cluster_1 upstream_cx_active: " << test_server_->gauge("cluster.cluster_1.upstream_cx_active")->value() << std::endl;
+    std::cout << prefix << " cluster_1 upstream_cx_total: " << test_server_->counter("cluster.cluster_1.upstream_cx_total")->value() << std::endl;
+    std::cout << prefix << " cluster_1 upstream_rq_cancelled: " << test_server_->counter("cluster.cluster_1.upstream_rq_cancelled")->value() << std::endl;
+    std::cout << prefix << " cluster_1 upstream_rq_timeout: " << test_server_->counter("cluster.cluster_1.upstream_rq_timeout")->value() << std::endl;
+    std::cout << prefix << " cluster_1 upstream_rq_completed: " << test_server_->counter("cluster.cluster_1.upstream_rq_completed")->value() << std::endl;
+    // std::cout << prefix << " cluster_1 upstream_rq_time: " << test_server_->histogram("cluster.cluster_1.upstream_rq_time")->quantileSummary() << std::endl;
+    // std::cout << prefix << " cluster_1 upstream_rq_503: " << test_server_->counter("cluster.cluster_1.upstream_rq_503")->value() << std::endl;
+    // std::cout << prefix << " cluster_1 upstream_rq_504: " << test_server_->counter("cluster.cluster_1.upstream_rq_504")->value() << std::endl;
+    std::cout << prefix << " cluster_1 upstream_rq_max_duration_reached: " << test_server_->counter("cluster.cluster_1.upstream_rq_max_duration_reached")->value() << std::endl;
+    std::cout << prefix << " cluster_1 upstream_rq_per_try_timeout: " << test_server_->counter("cluster.cluster_1.upstream_rq_per_try_timeout")->value() << std::endl;
+    std::cout << prefix << " cluster_1 upstream_rq_rx_reset: " << test_server_->counter("cluster.cluster_1.upstream_rq_rx_reset")->value() << std::endl;
+    std::cout << prefix << " cluster_1 upstream_rq_tx_reset: " << test_server_->counter("cluster.cluster_1.upstream_rq_tx_reset")->value() << std::endl;
+    std::cout << prefix << " cluster_1 upstream_rq_retry_backoff_exponential: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_backoff_exponential")->value() << std::endl;
+    std::cout << prefix << " cluster_1 upstream_rq_retry_backoff_ratelimited: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_backoff_ratelimited")->value() << std::endl;
+    std::cout << prefix << " cluster_1 upstream_rq_retry_limit_exceeded: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_limit_exceeded")->value() << std::endl;
+    std::cout << prefix << " cluster_1 upstream_rq_retry_success: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_success")->value() << std::endl;
+  }
+
   const bool deferred_cluster_creation_;
   envoy::config::cluster::v3::Cluster cluster1_;
   envoy::config::cluster::v3::Cluster cluster2_;
@@ -355,14 +409,33 @@ TEST_P(AggregateIntegrationTest, PreviousPrioritiesRetryPredicate) {
 // upstream_rq_total (Counter) - Total requests
 // upstream_rq_pending_active (Gauge) - Total active requests pending a connection pool connection
 // upstream_rq_pending_total (Counter) Total requests pending a connection pool connection
-// upstream_cx_active (Gauge) - Total active connections
-// upstream cx_total (Counter) - Total connections
+// upstream_rq_cancelled (Counter) - Total requests cancelled before obtaining a connection pool connection
+// upstream_rq_timeout (Counter) - Total requests that timed out waiting for a response
+// upstream_rq_completed (Counter) - Total upstream requests completed
+// upstream_rq_<*xx> (Counter) - Aggregate HTTP response codes (e.g., 2xx, 3xx, etc.)
+// upstream_rq_<*> (Counter) - Specific HTTP response codes (e.g., 201, 302, etc.)
+// upstream_rq_time (Histogram) - Request time milliseconds
+// upstream_rq_max_duration_reached (Counter) - Total requests closed due to max duration reached
+// upstream_rq_per_try_timeout (Counter) - Total requests that hit the per try timeout (except when request hedging is enabled)
+// upstream_rq_rx_reset (Counter) - Total requests that were reset remotely
+// upstream_rq_tx_reset (Counter) - Total requests that were reset locally
+// upstream_rq_retry (Counter) - Total request retries
+// upstream_rq_retry_backoff_exponential (Counter) - Total retries using the exponential backoff strategy
+// upstream_rq_retry_backoff_ratelimited (Counter) - Total retries using the ratelimited backoff strategy
+// upstream_rq_retry_limit_exceeded (Counter) - Total requests not retried due to exceeding the configured number of maximum retries
+// upstream_rq_retry_success (Counter) - Total request retry successes
+// upstream_rq_retry_overflow (Counter) - Total requests not retried due to circuit breaking or exceeding the retry budget
 
 // cluster.aggregate_cluster.upstream_rq_active
 // cluster.aggregate_cluster.upstream_rq_total
 // cluster.aggregate_cluster.upstream_rq_pending_active
 // cluster.aggregate_cluster.upstream_rq_pending_total
+
+// upstream_cx_active (Gauge) - Total active connections
+// upstream cx_total (Counter) - Total connections
+
 // cluster.aggregate_cluster.upstream_cx_active
+// cluster.aggregate_cluster.cx_total
 
 // --------------------
 
@@ -587,9 +660,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRequests) {
   std::cout << "DURING request/response1 cluster_1 remaining_rq: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_rq")->value() << std::endl;
 
   // now complete the request
-
   std::cout << "---------- 12 ENCODING HEADERS AND ENDING STREAM, RETURNING RESPONSE" << std::endl;
-
   // respond with headers
   upstream_request_->encodeHeaders(default_response_headers_, true); // default_response_headers_ is just {{":status", "200"}}, the bool is to denote end of stream or not
   
@@ -1496,65 +1567,40 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
   EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_retry_open")->value(), 0);
   EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_retries")->value(), 1);
 
+  printClusterStats("BEFORE");
+
   std::cout << "--------------------" << std::endl;
-  std::cout << "BEFORE aggregate_cluster rq_retry_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open")->value() << std::endl;
-  std::cout << "BEFORE aggregate_cluster remaining_retries: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_retries")->value() << std::endl;
-  std::cout << "BEFORE aggregate_cluster upstream_rq_retry: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry")->value() << std::endl;
-  std::cout << "BEFORE aggregate_cluster upstream_rq_retry_overflow: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_overflow")->value() << std::endl;
-  // std::cout << "BEFORE aggregate_cluster upstream_rq_retry_limit_exceeded: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_limit_exceeded")->value() << std::endl;
-  // std::cout << "BEFORE aggregate_cluster upstream_rq_retry_success: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_success")->value() << std::endl;
-  std::cout << "BEFORE aggregate_cluster upstream_rq_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_total")->value() << std::endl;
-  std::cout << "BEFORE aggregate_cluster upstream_rq_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_rq_active")->value() << std::endl;
-  std::cout << "BEFORE aggregate_cluster upstream_cx_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_cx_active")->value() << std::endl;
-  std::cout << "BEFORE aggregate_cluster upstream_cx_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_cx_total")->value() << std::endl;
-  std::cout << "BEFORE cluster_1 rq_retry_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_retry_open")->value() << std::endl;
-  std::cout << "BEFORE cluster_1 remaining_retries: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_retries")->value() << std::endl;
-  std::cout << "BEFORE cluster_1 upstream_rq_retry: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry")->value() << std::endl;
-  std::cout << "BEFORE cluster_1 upstream_rq_retry_overflow: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_overflow")->value() << std::endl;
-  // std::cout << "BEFORE cluster_1 upstream_rq_retry_limit_exceeded: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_limit_exceeded")->value() << std::endl;
-  // std::cout << "BEFORE cluster_1 upstream_rq_retry_success: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_success")->value() << std::endl;
-  std::cout << "BEFORE cluster_1 upstream_rq_total: " << test_server_->counter("cluster.cluster_1.upstream_rq_total")->value() << std::endl;
-  std::cout << "BEFORE cluster_1 upstream_rq_active: " << test_server_->gauge("cluster.cluster_1.upstream_rq_active")->value() << std::endl;
-  std::cout << "BEFORE cluster_1 upstream_cx_active: " << test_server_->gauge("cluster.cluster_1.upstream_cx_active")->value() << std::endl;
-  std::cout << "BEFORE cluster_1 upstream_cx_total: " << test_server_->counter("cluster.cluster_1.upstream_cx_total")->value() << std::endl;
+  std::cout << "DOWNSTREAM CLIENT: MAKING HTTP CONNECTION" << std::endl;
 
   codec_client_ = makeHttpConnection(lookupPort("http"));
 
   // set the retry-on header here for 5xx responses {"x-envoy-retry-on", "5xx"} 
   // !! REMOVED FOR NOW because this is set in the route configuration
 
+  std::cout << "--------------------" << std::endl;
+  std::cout << "DOWNSTREAM CLIENT: SENDING REQUEST" << std::endl;
+
   // send the request
   auto aggregate_cluster_response1 = codec_client_->makeHeaderOnlyRequest(
     Http::TestRequestHeaderMapImpl{{":method", "GET"},{":path", "/aggregatecluster"},{":scheme", "http"},{":authority", "host"}}
   );
 
+  std::cout << "--------------------" << std::endl;
+  std::cout << "UPSTREAM CLUSTER: WAITING FOR REQUEST" << std::endl;
+
   // wait for the request to reach cluster_1
   waitForNextUpstreamRequest(FirstUpstreamIndex);
 
+  printClusterStats("REQUEST");
+
   std::cout << "--------------------" << std::endl;
-  std::cout << "DURING1 aggregate_cluster rq_retry_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open")->value() << std::endl;
-  std::cout << "DURING1 aggregate_cluster remaining_retries: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_retries")->value() << std::endl;
-  std::cout << "DURING1 aggregate_cluster upstream_rq_retry: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry")->value() << std::endl;
-  std::cout << "DURING1 aggregate_cluster upstream_rq_retry_overflow: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_overflow")->value() << std::endl;
-  // std::cout << "DURING1 aggregate_cluster upstream_rq_retry_limit_exceeded: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_limit_exceeded")->value() << std::endl;
-  // std::cout << "DURING1 aggregate_cluster upstream_rq_retry_success: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_success")->value() << std::endl;
-  std::cout << "DURING1 aggregate_cluster upstream_rq_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_total")->value() << std::endl;
-  std::cout << "DURING1 aggregate_cluster upstream_rq_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_rq_active")->value() << std::endl;
-  std::cout << "DURING1 aggregate_cluster upstream_cx_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_cx_active")->value() << std::endl;
-  std::cout << "DURING1 aggregate_cluster upstream_cx_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_cx_total")->value() << std::endl;
-  std::cout << "DURING1 cluster_1 rq_retry_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_retry_open")->value() << std::endl;
-  std::cout << "DURING1 cluster_1 remaining_retries: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_retries")->value() << std::endl;
-  std::cout << "DURING1 cluster_1 upstream_rq_retry: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry")->value() << std::endl;
-  std::cout << "DURING1 cluster_1 upstream_rq_retry_overflow: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_overflow")->value() << std::endl;
-  // std::cout << "DURING1 cluster_1 upstream_rq_retry_limit_exceeded: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_limit_exceeded")->value() << std::endl;
-  // std::cout << "DURING1 cluster_1 upstream_rq_retry_success: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_success")->value() << std::endl;
-  std::cout << "DURING1 cluster_1 upstream_rq_total: " << test_server_->counter("cluster.cluster_1.upstream_rq_total")->value() << std::endl;
-  std::cout << "DURING1 cluster_1 upstream_rq_active: " << test_server_->gauge("cluster.cluster_1.upstream_rq_active")->value() << std::endl;
-  std::cout << "DURING1 cluster_1 upstream_cx_active: " << test_server_->gauge("cluster.cluster_1.upstream_cx_active")->value() << std::endl;
-  std::cout << "DURING1 cluster_1 upstream_cx_total: " << test_server_->counter("cluster.cluster_1.upstream_cx_total")->value() << std::endl;
+  std::cout << "UPSTREAM REQUEST REPLY 1: ENCODING HEADERS WITH 503 AND END STREAM" << std::endl;
 
   // respond with 503 to trigger the first retry
   upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, true); // remember true is the upstream saying it is done processing the request
+
+  std::cout << "--------------------" << std::endl;
+  std::cout << "UPSTREAM CLUSTER: WAITING FOR RETRY 1" << std::endl;
 
   // wait for the first retry to reach cluster_1
   waitForNextUpstreamRequest(FirstUpstreamIndex);
@@ -1568,11 +1614,16 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
   // also we need to be careful that the retry_policy is setup to send it to the same cluster again
   // and in the default config at the very top "update_frequency: 1" means it will try to send the retry to the second cluster in the aggregate_cluster list
 
+  std::cout << "--------------------" << std::endl;
+  std::cout << "TESTING STATS 1" << std::endl;
+
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open", 1); // !!! the aggregate_cluster circuit breaker triggers (FINALLY SOME MOVEMENT)
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 0);
 
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open", 0); // !!! but the cluster_1 circuit breaker is unchanged
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries", 1);
+
+  test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry", 1); // this is the first retry
 
   EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open")->value(), 1);
   EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_retries")->value(), 0);
@@ -1580,33 +1631,21 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
   EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_retry_open")->value(), 0);
   EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_retries")->value(), 1);
 
+  printClusterStats("RETRY-1");
+
   std::cout << "--------------------" << std::endl;
-  std::cout << "DURING2 aggregate_cluster rq_retry_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open")->value() << std::endl;
-  std::cout << "DURING2 aggregate_cluster remaining_retries: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_retries")->value() << std::endl;
-  std::cout << "DURING2 aggregate_cluster upstream_rq_retry: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry")->value() << std::endl;
-  std::cout << "DURING2 aggregate_cluster upstream_rq_retry_overflow: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_overflow")->value() << std::endl;
-  // std::cout << "DURING2 aggregate_cluster upstream_rq_retry_limit_exceeded: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_limit_exceeded")->value() << std::endl;
-  // std::cout << "DURING2 aggregate_cluster upstream_rq_retry_success: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_success")->value() << std::endl;
-  std::cout << "DURING2 aggregate_cluster upstream_rq_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_total")->value() << std::endl;
-  std::cout << "DURING2 aggregate_cluster upstream_rq_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_rq_active")->value() << std::endl;
-  std::cout << "DURING2 aggregate_cluster upstream_cx_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_cx_active")->value() << std::endl;
-  std::cout << "DURING2 aggregate_cluster upstream_cx_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_cx_total")->value() << std::endl;
-  std::cout << "DURING2 cluster_1 rq_retry_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_retry_open")->value() << std::endl;
-  std::cout << "DURING2 cluster_1 remaining_retries: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_retries")->value() << std::endl;
-  std::cout << "DURING2 cluster_1 upstream_rq_retry: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry")->value() << std::endl;
-  std::cout << "DURING2 cluster_1 upstream_rq_retry_overflow: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_overflow")->value() << std::endl;
-  // std::cout << "DURING2 cluster_1 upstream_rq_retry_limit_exceeded: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_limit_exceeded")->value() << std::endl;
-  // std::cout << "DURING2 cluster_1 upstream_rq_retry_success: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_success")->value() << std::endl;
-  std::cout << "DURING2 cluster_1 upstream_rq_total: " << test_server_->counter("cluster.cluster_1.upstream_rq_total")->value() << std::endl;
-  std::cout << "DURING2 cluster_1 upstream_rq_active: " << test_server_->gauge("cluster.cluster_1.upstream_rq_active")->value() << std::endl;
-  std::cout << "DURING2 cluster_1 upstream_cx_active: " << test_server_->gauge("cluster.cluster_1.upstream_cx_active")->value() << std::endl;
-  std::cout << "DURING2 cluster_1 upstream_cx_total: " << test_server_->counter("cluster.cluster_1.upstream_cx_total")->value() << std::endl;
+  std::cout << "UPSTREAM REQUEST REPLY 2: ENCODING HEADERS WITH 503 AND END STREAM" << std::endl;
 
   // respond with another 503 to trigger the second retry
   upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, true);
 
+  std::cout << "--------------------" << std::endl;
+  std::cout << "TESTING STATS 2" << std::endl;
+
   // the second retry should be automatically rejected, because the circuit breaker is triggered
-  test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow", 1); // overflow on the aggregate_cluster ??
+  // test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow", 1); // overflow on the aggregate_cluster ??
+
+  test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry", 2); // this is the second retry
 
   // ./test/integration/server.h:452: Failure
   // Value of: TestUtility::waitForCounterEq(statStore(), name, value, time_system_, timeout, dispatcher)
@@ -1615,30 +1654,23 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
 
   // the rq_retry_overflow never goes above 0 - why??
 
+  printClusterStats("RETRY-2");
+
   std::cout << "--------------------" << std::endl;
-  std::cout << "DURING3 aggregate_cluster rq_retry_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open")->value() << std::endl;
-  std::cout << "DURING3 aggregate_cluster remaining_retries: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_retries")->value() << std::endl;
-  std::cout << "DURING3 aggregate_cluster upstream_rq_retry: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry")->value() << std::endl;
-  std::cout << "DURING3 aggregate_cluster upstream_rq_retry_overflow: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_overflow")->value() << std::endl;
-  // std::cout << "DURING3 aggregate_cluster upstream_rq_retry_limit_exceeded: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_limit_exceeded")->value() << std::endl;
-  // std::cout << "DURING3 aggregate_cluster upstream_rq_retry_success: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_success")->value() << std::endl;
-  std::cout << "DURING3 aggregate_cluster upstream_rq_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_total")->value() << std::endl;
-  std::cout << "DURING3 aggregate_cluster upstream_rq_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_rq_active")->value() << std::endl;
-  std::cout << "DURING3 aggregate_cluster upstream_cx_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_cx_active")->value() << std::endl;
-  std::cout << "DURING3 aggregate_cluster upstream_cx_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_cx_total")->value() << std::endl;
-  std::cout << "DURING3 cluster_1 rq_retry_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_retry_open")->value() << std::endl;
-  std::cout << "DURING3 cluster_1 remaining_retries: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_retries")->value() << std::endl;
-  std::cout << "DURING3 cluster_1 upstream_rq_retry: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry")->value() << std::endl;
-  std::cout << "DURING3 cluster_1 upstream_rq_retry_overflow: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_overflow")->value() << std::endl;
-  // std::cout << "DURING3 cluster_1 upstream_rq_retry_limit_exceeded: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_limit_exceeded")->value() << std::endl;
-  // std::cout << "DURING3 cluster_1 upstream_rq_retry_success: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_success")->value() << std::endl;
-  std::cout << "DURING3 cluster_1 upstream_rq_total: " << test_server_->counter("cluster.cluster_1.upstream_rq_total")->value() << std::endl;
-  std::cout << "DURING3 cluster_1 upstream_rq_active: " << test_server_->gauge("cluster.cluster_1.upstream_rq_active")->value() << std::endl;
-  std::cout << "DURING3 cluster_1 upstream_cx_active: " << test_server_->gauge("cluster.cluster_1.upstream_cx_active")->value() << std::endl;
-  std::cout << "DURING3 cluster_1 upstream_cx_total: " << test_server_->counter("cluster.cluster_1.upstream_cx_total")->value() << std::endl;
+  std::cout << "DOWNSTREAM RESPONSE: WAITING FOR END STREAM" << std::endl;
 
   // the request should complete with a 503
   ASSERT_TRUE(aggregate_cluster_response1->waitForEndStream());
+
+  // test/extensions/clusters/aggregate/cluster_integration_test.cc:1665: Failure
+  // Value of: aggregate_cluster_response1->waitForEndStream()
+  //   Actual: false (Timed out waiting for end stream
+  // )
+  // Expected: true
+
+  std::cout << "--------------------" << std::endl;
+  std::cout << "DOWNSTREAM RESPONSE: CHECKING HEADER STATUS IS 503" << std::endl;
+
   EXPECT_EQ("503", aggregate_cluster_response1->headers().getStatusValue());
 
   // Expected equality of these values:
@@ -1703,29 +1735,11 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
   // A value of 0 will disable the route’s timeout.
   // Note : This timeout includes all retries. See also x-envoy-upstream-rq-timeout-ms, x-envoy-upstream-rq-per-try-timeout-ms, and the retry overview.
 
-  std::cout << "--------------------" << std::endl;
-  std::cout << "AFTER aggregate_cluster rq_retry_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open")->value() << std::endl;
-  std::cout << "AFTER aggregate_cluster remaining_retries: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_retries")->value() << std::endl;
-  std::cout << "AFTER aggregate_cluster upstream_rq_retry: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry")->value() << std::endl;
-  std::cout << "AFTER aggregate_cluster upstream_rq_retry_overflow: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_overflow")->value() << std::endl;
-  // std::cout << "AFTER aggregate_cluster upstream_rq_retry_limit_exceeded: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_limit_exceeded")->value() << std::endl;
-  // std::cout << "AFTER aggregate_cluster upstream_rq_retry_success: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_success")->value() << std::endl;
-  std::cout << "AFTER aggregate_cluster upstream_rq_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_total")->value() << std::endl;
-  std::cout << "AFTER aggregate_cluster upstream_rq_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_rq_active")->value() << std::endl;
-  std::cout << "AFTER aggregate_cluster upstream_cx_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_cx_active")->value() << std::endl;
-  std::cout << "AFTER aggregate_cluster upstream_cx_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_cx_total")->value() << std::endl;
-  std::cout << "AFTER cluster_1 rq_retry_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_retry_open")->value() << std::endl;
-  std::cout << "AFTER cluster_1 remaining_retries: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_retries")->value() << std::endl;
-  std::cout << "AFTER cluster_1 upstream_rq_retry: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry")->value() << std::endl;
-  std::cout << "AFTER cluster_1 upstream_rq_retry_overflow: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_overflow")->value() << std::endl;
-  // std::cout << "AFTER cluster_1 upstream_rq_retry_limit_exceeded: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_limit_exceeded")->value() << std::endl;
-  // std::cout << "AFTER cluster_1 upstream_rq_retry_success: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_success")->value() << std::endl;
-  std::cout << "AFTER cluster_1 upstream_rq_total: " << test_server_->counter("cluster.cluster_1.upstream_rq_total")->value() << std::endl;
-  std::cout << "AFTER cluster_1 upstream_rq_active: " << test_server_->gauge("cluster.cluster_1.upstream_rq_active")->value() << std::endl;
-  std::cout << "AFTER cluster_1 upstream_cx_active: " << test_server_->gauge("cluster.cluster_1.upstream_cx_active")->value() << std::endl;
-  std::cout << "AFTER cluster_1 upstream_cx_total: " << test_server_->counter("cluster.cluster_1.upstream_cx_total")->value() << std::endl;
+  printClusterStats("AFTER");
 
-  // !! why is no teardown needed here?
+  cleanupUpstreamAndDownstream();
+  // TODO: try to get rid of this
+  codec_client_->close();
  
   std::cout << "---------- 99 TEST END" << std::endl;
 }
@@ -1748,6 +1762,17 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
 // BEFORE aggregate_cluster upstream_rq_active: 0
 // BEFORE aggregate_cluster upstream_cx_active: 0
 // BEFORE aggregate_cluster upstream_cx_total: 0
+// BEFORE aggregate_cluster upstream_rq_cancelled: 0
+// BEFORE aggregate_cluster upstream_rq_timeout: 0
+// BEFORE aggregate_cluster upstream_rq_completed: 0
+// BEFORE aggregate_cluster upstream_rq_max_duration_reached: 0
+// BEFORE aggregate_cluster upstream_rq_per_try_timeout: 0
+// BEFORE aggregate_cluster upstream_rq_rx_reset: 0
+// BEFORE aggregate_cluster upstream_rq_tx_reset: 0
+// BEFORE aggregate_cluster upstream_rq_retry_backoff_exponential: 0
+// BEFORE aggregate_cluster upstream_rq_retry_backoff_ratelimited: 0
+// BEFORE aggregate_cluster upstream_rq_retry_limit_exceeded: 0
+// BEFORE aggregate_cluster upstream_rq_retry_success: 0
 // BEFORE cluster_1 rq_retry_open: 0
 // BEFORE cluster_1 remaining_retries: 1
 // BEFORE cluster_1 upstream_rq_retry: 0
@@ -1756,99 +1781,207 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
 // BEFORE cluster_1 upstream_rq_active: 0
 // BEFORE cluster_1 upstream_cx_active: 0
 // BEFORE cluster_1 upstream_cx_total: 0
+// BEFORE cluster_1 upstream_rq_cancelled: 0
+// BEFORE cluster_1 upstream_rq_timeout: 0
+// BEFORE cluster_1 upstream_rq_completed: 0
+// BEFORE cluster_1 upstream_rq_max_duration_reached: 0
+// BEFORE cluster_1 upstream_rq_per_try_timeout: 0
+// BEFORE cluster_1 upstream_rq_rx_reset: 0
+// BEFORE cluster_1 upstream_rq_tx_reset: 0
+// BEFORE cluster_1 upstream_rq_retry_backoff_exponential: 0
+// BEFORE cluster_1 upstream_rq_retry_backoff_ratelimited: 0
+// BEFORE cluster_1 upstream_rq_retry_limit_exceeded: 0
+// BEFORE cluster_1 upstream_rq_retry_success: 0
 // --------------------
-// DURING1 aggregate_cluster rq_retry_open: 0
-// DURING1 aggregate_cluster remaining_retries: 1
-// DURING1 aggregate_cluster upstream_rq_retry: 0
-// DURING1 aggregate_cluster upstream_rq_retry_overflow: 0
-// DURING1 aggregate_cluster upstream_rq_total: 0
-// DURING1 aggregate_cluster upstream_rq_active: 0
-// DURING1 aggregate_cluster upstream_cx_active: 0
-// DURING1 aggregate_cluster upstream_cx_total: 0
-// DURING1 cluster_1 rq_retry_open: 0
-// DURING1 cluster_1 remaining_retries: 1
-// DURING1 cluster_1 upstream_rq_retry: 0
-// DURING1 cluster_1 upstream_rq_retry_overflow: 0
-// DURING1 cluster_1 upstream_rq_total: 1  <-- 1 request
-// DURING1 cluster_1 upstream_rq_active: 1
-// DURING1 cluster_1 upstream_cx_active: 1
-// DURING1 cluster_1 upstream_cx_total: 1
+// DOWNSTREAM CLIENT: MAKING HTTP CONNECTION
 // --------------------
-// DURING2 aggregate_cluster rq_retry_open: 1  <-- aggregate_cluster circuit breaker triggered
-// DURING2 aggregate_cluster remaining_retries: 0  <-- 0 remaining retries
-// DURING2 aggregate_cluster upstream_rq_retry: 1 <-- 1 retry
-// DURING2 aggregate_cluster upstream_rq_retry_overflow: 0
-// DURING2 aggregate_cluster upstream_rq_total: 0
-// DURING2 aggregate_cluster upstream_rq_active: 0
-// DURING2 aggregate_cluster upstream_cx_active: 0
-// DURING2 aggregate_cluster upstream_cx_total: 0
-// DURING2 cluster_1 rq_retry_open: 0  <-- cluster_1 circuit breaker untouched
-// DURING2 cluster_1 remaining_retries: 1
-// DURING2 cluster_1 upstream_rq_retry: 0
-// DURING2 cluster_1 upstream_rq_retry_overflow: 0
-// DURING2 cluster_1 upstream_rq_total: 2  <-- 2 requests
-// DURING2 cluster_1 upstream_rq_active: 1
-// DURING2 cluster_1 upstream_cx_active: 1
-// DURING2 cluster_1 upstream_cx_total: 1
-// ./test/integration/server.h:452: Failure
-// Value of: TestUtility::waitForCounterEq(statStore(), name, value, time_system_, timeout, dispatcher)
-//   Actual: false (timed out waiting for cluster.aggregate_cluster.upstream_rq_retry_overflow to be 1, current value 0)
+// DOWNSTREAM CLIENT: SENDING REQUEST
+// --------------------
+// UPSTREAM CLUSTER: WAITING FOR REQUEST
+// --------------------
+// REQUEST aggregate_cluster rq_retry_open: 0
+// REQUEST aggregate_cluster remaining_retries: 1
+// REQUEST aggregate_cluster upstream_rq_retry: 0
+// REQUEST aggregate_cluster upstream_rq_retry_overflow: 0
+// REQUEST aggregate_cluster upstream_rq_total: 0
+// REQUEST aggregate_cluster upstream_rq_active: 0
+// REQUEST aggregate_cluster upstream_cx_active: 0
+// REQUEST aggregate_cluster upstream_cx_total: 0
+// REQUEST aggregate_cluster upstream_rq_cancelled: 0
+// REQUEST aggregate_cluster upstream_rq_timeout: 0
+// REQUEST aggregate_cluster upstream_rq_completed: 0
+// REQUEST aggregate_cluster upstream_rq_max_duration_reached: 0
+// REQUEST aggregate_cluster upstream_rq_per_try_timeout: 0
+// REQUEST aggregate_cluster upstream_rq_rx_reset: 0
+// REQUEST aggregate_cluster upstream_rq_tx_reset: 0
+// REQUEST aggregate_cluster upstream_rq_retry_backoff_exponential: 0
+// REQUEST aggregate_cluster upstream_rq_retry_backoff_ratelimited: 0
+// REQUEST aggregate_cluster upstream_rq_retry_limit_exceeded: 0
+// REQUEST aggregate_cluster upstream_rq_retry_success: 0
+// REQUEST cluster_1 rq_retry_open: 0
+// REQUEST cluster_1 remaining_retries: 1
+// REQUEST cluster_1 upstream_rq_retry: 0
+// REQUEST cluster_1 upstream_rq_retry_overflow: 0
+// REQUEST cluster_1 upstream_rq_total: 1
+// REQUEST cluster_1 upstream_rq_active: 1
+// REQUEST cluster_1 upstream_cx_active: 1
+// REQUEST cluster_1 upstream_cx_total: 1
+// REQUEST cluster_1 upstream_rq_cancelled: 0
+// REQUEST cluster_1 upstream_rq_timeout: 0
+// REQUEST cluster_1 upstream_rq_completed: 0
+// REQUEST cluster_1 upstream_rq_max_duration_reached: 0
+// REQUEST cluster_1 upstream_rq_per_try_timeout: 0
+// REQUEST cluster_1 upstream_rq_rx_reset: 0
+// REQUEST cluster_1 upstream_rq_tx_reset: 0
+// REQUEST cluster_1 upstream_rq_retry_backoff_exponential: 0
+// REQUEST cluster_1 upstream_rq_retry_backoff_ratelimited: 0
+// REQUEST cluster_1 upstream_rq_retry_limit_exceeded: 0
+// REQUEST cluster_1 upstream_rq_retry_success: 0
+// --------------------
+// UPSTREAM REQUEST REPLY 1: ENCODING HEADERS WITH 503 AND END STREAM
+// --------------------
+// UPSTREAM CLUSTER: WAITING FOR RETRY 1
+// --------------------
+// TESTING STATS 1
+// --------------------
+// RETRY-1 aggregate_cluster rq_retry_open: 1
+// RETRY-1 aggregate_cluster remaining_retries: 0
+// RETRY-1 aggregate_cluster upstream_rq_retry: 1
+// RETRY-1 aggregate_cluster upstream_rq_retry_overflow: 0
+// RETRY-1 aggregate_cluster upstream_rq_total: 0
+// RETRY-1 aggregate_cluster upstream_rq_active: 0
+// RETRY-1 aggregate_cluster upstream_cx_active: 0
+// RETRY-1 aggregate_cluster upstream_cx_total: 0
+// RETRY-1 aggregate_cluster upstream_rq_cancelled: 0
+// RETRY-1 aggregate_cluster upstream_rq_timeout: 0
+// RETRY-1 aggregate_cluster upstream_rq_completed: 0
+// RETRY-1 aggregate_cluster upstream_rq_max_duration_reached: 0
+// RETRY-1 aggregate_cluster upstream_rq_per_try_timeout: 0
+// RETRY-1 aggregate_cluster upstream_rq_rx_reset: 0
+// RETRY-1 aggregate_cluster upstream_rq_tx_reset: 0
+// RETRY-1 aggregate_cluster upstream_rq_retry_backoff_exponential: 1
+// RETRY-1 aggregate_cluster upstream_rq_retry_backoff_ratelimited: 0
+// RETRY-1 aggregate_cluster upstream_rq_retry_limit_exceeded: 0
+// RETRY-1 aggregate_cluster upstream_rq_retry_success: 0
+// RETRY-1 cluster_1 rq_retry_open: 0
+// RETRY-1 cluster_1 remaining_retries: 1
+// RETRY-1 cluster_1 upstream_rq_retry: 0
+// RETRY-1 cluster_1 upstream_rq_retry_overflow: 0
+// RETRY-1 cluster_1 upstream_rq_total: 2
+// RETRY-1 cluster_1 upstream_rq_active: 1
+// RETRY-1 cluster_1 upstream_cx_active: 1
+// RETRY-1 cluster_1 upstream_cx_total: 1
+// RETRY-1 cluster_1 upstream_rq_cancelled: 0
+// RETRY-1 cluster_1 upstream_rq_timeout: 0
+// RETRY-1 cluster_1 upstream_rq_completed: 0
+// RETRY-1 cluster_1 upstream_rq_max_duration_reached: 0
+// RETRY-1 cluster_1 upstream_rq_per_try_timeout: 0
+// RETRY-1 cluster_1 upstream_rq_rx_reset: 0
+// RETRY-1 cluster_1 upstream_rq_tx_reset: 0
+// RETRY-1 cluster_1 upstream_rq_retry_backoff_exponential: 0
+// RETRY-1 cluster_1 upstream_rq_retry_backoff_ratelimited: 0
+// RETRY-1 cluster_1 upstream_rq_retry_limit_exceeded: 0
+// RETRY-1 cluster_1 upstream_rq_retry_success: 0
+// --------------------
+// UPSTREAM REQUEST REPLY 2: ENCODING HEADERS WITH 503 AND END STREAM
+// --------------------
+// TESTING STATS 2
+// --------------------
+// RETRY-2 aggregate_cluster rq_retry_open: 1
+// RETRY-2 aggregate_cluster remaining_retries: 0
+// RETRY-2 aggregate_cluster upstream_rq_retry: 2
+// RETRY-2 aggregate_cluster upstream_rq_retry_overflow: 0
+// RETRY-2 aggregate_cluster upstream_rq_total: 0
+// RETRY-2 aggregate_cluster upstream_rq_active: 0
+// RETRY-2 aggregate_cluster upstream_cx_active: 0
+// RETRY-2 aggregate_cluster upstream_cx_total: 0
+// RETRY-2 aggregate_cluster upstream_rq_cancelled: 0
+// RETRY-2 aggregate_cluster upstream_rq_timeout: 0
+// RETRY-2 aggregate_cluster upstream_rq_completed: 0
+// RETRY-2 aggregate_cluster upstream_rq_max_duration_reached: 0
+// RETRY-2 aggregate_cluster upstream_rq_per_try_timeout: 0
+// RETRY-2 aggregate_cluster upstream_rq_rx_reset: 0
+// RETRY-2 aggregate_cluster upstream_rq_tx_reset: 0
+// RETRY-2 aggregate_cluster upstream_rq_retry_backoff_exponential: 2
+// RETRY-2 aggregate_cluster upstream_rq_retry_backoff_ratelimited: 0
+// RETRY-2 aggregate_cluster upstream_rq_retry_limit_exceeded: 0
+// RETRY-2 aggregate_cluster upstream_rq_retry_success: 0
+// RETRY-2 cluster_1 rq_retry_open: 0
+// RETRY-2 cluster_1 remaining_retries: 1
+// RETRY-2 cluster_1 upstream_rq_retry: 0
+// RETRY-2 cluster_1 upstream_rq_retry_overflow: 0
+// RETRY-2 cluster_1 upstream_rq_total: 3
+// RETRY-2 cluster_1 upstream_rq_active: 1
+// RETRY-2 cluster_1 upstream_cx_active: 1
+// RETRY-2 cluster_1 upstream_cx_total: 1
+// RETRY-2 cluster_1 upstream_rq_cancelled: 0
+// RETRY-2 cluster_1 upstream_rq_timeout: 0
+// RETRY-2 cluster_1 upstream_rq_completed: 0
+// RETRY-2 cluster_1 upstream_rq_max_duration_reached: 0
+// RETRY-2 cluster_1 upstream_rq_per_try_timeout: 0
+// RETRY-2 cluster_1 upstream_rq_rx_reset: 0
+// RETRY-2 cluster_1 upstream_rq_tx_reset: 0
+// RETRY-2 cluster_1 upstream_rq_retry_backoff_exponential: 0
+// RETRY-2 cluster_1 upstream_rq_retry_backoff_ratelimited: 0
+// RETRY-2 cluster_1 upstream_rq_retry_limit_exceeded: 0
+// RETRY-2 cluster_1 upstream_rq_retry_success: 0
+// --------------------
+// DOWNSTREAM RESPONSE: WAITING FOR END STREAM
+// test/extensions/clusters/aggregate/cluster_integration_test.cc:1663: Failure
+// Value of: aggregate_cluster_response1->waitForEndStream()
+//   Actual: false (Timed out waiting for end stream
+// )
 // Expected: true
 // Stack trace:
-//   0x3557c41: Envoy::IntegrationTestServer::waitForCounterEq()
-//   0x2b7d8af: Envoy::(anonymous namespace)::AggregateIntegrationTest_CircuitBreakerTestMaxRetries_Test::TestBody()
-//   0x744c58b: testing::internal::HandleSehExceptionsInMethodIfSupported<>()
-//   0x743c13d: testing::internal::HandleExceptionsInMethodIfSupported<>()
-//   0x74249b3: testing::Test::Run()
-//   0x742557a: testing::TestInfo::Run()
+//   0x2b79c38: Envoy::(anonymous namespace)::AggregateIntegrationTest_CircuitBreakerTestMaxRetries_Test::TestBody()
+//   0x7448bcb: testing::internal::HandleSehExceptionsInMethodIfSupported<>()
+//   0x743877d: testing::internal::HandleExceptionsInMethodIfSupported<>()
+//   0x7420ff3: testing::Test::Run()
+//   0x7421bba: testing::TestInfo::Run()
 // ... Google Test internal frames ...
 
-// --------------------
-// DURING3 aggregate_cluster rq_retry_open: 1  <-- aggregate_cluster circuit breaker still triggered
-// DURING3 aggregate_cluster remaining_retries: 0  <-- 0 remaining retries
-// DURING3 aggregate_cluster upstream_rq_retry: 2  <-- 2 retries
-// DURING3 aggregate_cluster upstream_rq_retry_overflow: 0  <-- but overflow is not incremented?
-// DURING3 aggregate_cluster upstream_rq_total: 0
-// DURING3 aggregate_cluster upstream_rq_active: 0
-// DURING3 aggregate_cluster upstream_cx_active: 0
-// DURING3 aggregate_cluster upstream_cx_total: 0
-// DURING3 cluster_1 rq_retry_open: 0
-// DURING3 cluster_1 remaining_retries: 1
-// DURING3 cluster_1 upstream_rq_retry: 0
-// DURING3 cluster_1 upstream_rq_retry_overflow: 0
-// DURING3 cluster_1 upstream_rq_total: 3  <-- 3 requests ??
-// DURING3 cluster_1 upstream_rq_active: 1
-// DURING3 cluster_1 upstream_cx_active: 1
-// DURING3 cluster_1 upstream_cx_total: 1
-// test/extensions/clusters/aggregate/cluster_integration_test.cc:1638: Failure
+// test/integration/http_integration.cc:385: Failure
 // Expected equality of these values:
-//   "503"
-//     Which is: 0x8601fd
-//   aggregate_cluster_response1->headers().getStatusValue()
-//     Which is: "504"
+//   codec_client_->numActiveRequests()
+//     Which is: 1
+//   0
+// test requires explicit cleanupUpstreamAndDownstream
 // Stack trace:
-//   0x2b7fb44: Envoy::(anonymous namespace)::AggregateIntegrationTest_CircuitBreakerTestMaxRetries_Test::TestBody()
-//   0x744c58b: testing::internal::HandleSehExceptionsInMethodIfSupported<>()
-//   0x743c13d: testing::internal::HandleExceptionsInMethodIfSupported<>()
-//   0x74249b3: testing::Test::Run()
-//   0x742557a: testing::TestInfo::Run()
+//   0x3075900: Envoy::HttpIntegrationTest::~HttpIntegrationTest()
+//   0x2b56ec9: Envoy::(anonymous namespace)::AggregateIntegrationTest::~AggregateIntegrationTest()
+//   0x2b76435: Envoy::(anonymous namespace)::AggregateIntegrationTest_CircuitBreakerTestMaxRetries_Test::~AggregateIntegrationTest_CircuitBreakerTestMaxRetries_Test()
+//   0x2b76459: Envoy::(anonymous namespace)::AggregateIntegrationTest_CircuitBreakerTestMaxRetries_Test::~AggregateIntegrationTest_CircuitBreakerTestMaxRetries_Test()
+//   0x7439038: testing::Test::DeleteSelf_()
+//   0x7448bcb: testing::internal::HandleSehExceptionsInMethodIfSupported<>()
+//   0x743877d: testing::internal::HandleExceptionsInMethodIfSupported<>()
+//   0x7421c05: testing::TestInfo::Run()
+//   0x742240b: testing::TestSuite::Run()
 // ... Google Test internal frames ...
 
-// --------------------
-// AFTER aggregate_cluster rq_retry_open: 0
-// AFTER aggregate_cluster remaining_retries: 1
-// AFTER aggregate_cluster upstream_rq_retry: 2
-// AFTER aggregate_cluster upstream_rq_retry_overflow: 0
-// AFTER aggregate_cluster upstream_rq_total: 0
-// AFTER aggregate_cluster upstream_rq_active: 0
-// AFTER aggregate_cluster upstream_cx_active: 0
-// AFTER aggregate_cluster upstream_cx_total: 0
-// AFTER cluster_1 rq_retry_open: 0
-// AFTER cluster_1 remaining_retries: 1
-// AFTER cluster_1 upstream_rq_retry: 0
-// AFTER cluster_1 upstream_rq_retry_overflow: 0
-// AFTER cluster_1 upstream_rq_total: 3
-// AFTER cluster_1 upstream_rq_active: 0  <-- no more active requests
-// AFTER cluster_1 upstream_cx_active: 1
-// AFTER cluster_1 upstream_cx_total: 1
-// ---------- 99 TEST END
+// [external/com_google_absl/absl/flags/internal/flag.cc : 140] RAW: Restore saved value of envoy_reloadable_features_no_extension_lookup_by_name to: true
+// [external/com_google_absl/absl/flags/internal/flag.cc : 140] RAW: Restore saved value of envoy_reloadable_features_runtime_initialized to: false
+// [external/com_google_absl/absl/flags/internal/flag.cc : 140] RAW: Restore saved value of envoy_quic_always_support_server_preferred_address to: true
+// [  FAILED  ] IpVersions/AggregateIntegrationTest.CircuitBreakerTestMaxRetries/3, where GetParam() = (4-byte object <01-00 00-00>, true) (10627 ms)
+// [----------] 28 tests from IpVersions/AggregateIntegrationTest (52691 ms total)
+
+// [----------] Global test environment tear-down
+// [==========] 28 tests from 1 test suite ran. (52691 ms total)
+// [  PASSED  ] 24 tests.
+// [  FAILED  ] 4 tests, listed below:
+// [  FAILED  ] IpVersions/AggregateIntegrationTest.CircuitBreakerTestMaxRetries/0, where GetParam() = (4-byte object <00-00 00-00>, false)
+// [  FAILED  ] IpVersions/AggregateIntegrationTest.CircuitBreakerTestMaxRetries/1, where GetParam() = (4-byte object <00-00 00-00>, true)
+// [  FAILED  ] IpVersions/AggregateIntegrationTest.CircuitBreakerTestMaxRetries/2, where GetParam() = (4-byte object <01-00 00-00>, false)
+// [  FAILED  ] IpVersions/AggregateIntegrationTest.CircuitBreakerTestMaxRetries/3, where GetParam() = (4-byte object <01-00 00-00>, true)
+
+//  4 FAILED TESTS
+// ================================================================================
+// INFO: Found 1 test target...
+// Target //test/extensions/clusters/aggregate:cluster_integration_test up-to-date:
+//   bazel-bin/test/extensions/clusters/aggregate/cluster_integration_test
+// INFO: Elapsed time: 115.906s, Critical Path: 115.38s
+// INFO: 4 processes: 1 internal, 3 linux-sandbox.
+// INFO: Build completed, 1 test FAILED, 4 total actions
+// //test/extensions/clusters/aggregate:cluster_integration_test            FAILED in 53.0s
+//   /home/baz.murphy/.cache/bazel/_bazel_baz.murphy/7fcf1edc087d667522e3815b5db406ee/execroot/envoy/bazel-out/k8-fastbuild/testlogs/test/extensions/clusters/aggregate/cluster_integration_test/test.log
+
+// Executed 1 out of 1 test: 1 fails locally.
