@@ -1454,7 +1454,8 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
     //     num_retries: 3
 
     route->mutable_route()->mutable_retry_policy()->mutable_retry_on()->assign("5xx");
-    route->mutable_route()->mutable_retry_policy()->mutable_num_retries()->set_value(3); // !!! THINK ABOUT THIS CAREFULLY... THIS MAY AFFECT THE TESTS...
+    // !!! THINK ABOUT THIS CAREFULLY... THIS MAY AFFECT THE TESTS... this is the 
+    route->mutable_route()->mutable_retry_policy()->mutable_num_retries()->set_value(3);
 
     // pack it back
     filter->mutable_typed_config()->PackFrom(http_connection_manager);
@@ -1520,12 +1521,14 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
   codec_client_ = makeHttpConnection(lookupPort("http"));
 
   // set the retry-on header here for 5xx responses {"x-envoy-retry-on", "5xx"} 
-  // !! [REMOVED FOR NOW because this is set in the route configuration]
+  // !! REMOVED FOR NOW because this is set in the route configuration
+
+  // send the request
   auto aggregate_cluster_response1 = codec_client_->makeHeaderOnlyRequest(
     Http::TestRequestHeaderMapImpl{{":method", "GET"},{":path", "/aggregatecluster"},{":scheme", "http"},{":authority", "host"}}
   );
 
-  // wait the first request to reach cluster_1
+  // wait for the request to reach cluster_1
   waitForNextUpstreamRequest(FirstUpstreamIndex);
 
   std::cout << "--------------------" << std::endl;
@@ -1556,12 +1559,14 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
   // wait for the first retry to reach cluster_1
   waitForNextUpstreamRequest(FirstUpstreamIndex);
 
-  // ^but this gives a "timed out waiting for new stream" error:
+  // ^but this gave a "timed out waiting for new stream" error:
   // [2025-04-07 13:51:50.404][12][critical][assert] [test/integration/http_integration.cc:606] assert failure: result. Details: Timed out waiting for new stream.
-  // this is because the stream is torn down when the 503 is returned
-  // and a new stream is created
 
-  // but also we need to be careful that the retry_policy is setup to send it to the same cluster again
+  // because:
+  // when the 503 is returned, the existing stream is torn down, and a new stream is created
+
+  // also we need to be careful that the retry_policy is setup to send it to the same cluster again
+  // and in the default config at the very top "update_frequency: 1" means it will try to send the retry to the second cluster in the aggregate_cluster list
 
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open", 1); // !!! the aggregate_cluster circuit breaker triggers (FINALLY SOME MOVEMENT)
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 0);
@@ -1632,7 +1637,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
   std::cout << "DURING3 cluster_1 upstream_cx_active: " << test_server_->gauge("cluster.cluster_1.upstream_cx_active")->value() << std::endl;
   std::cout << "DURING3 cluster_1 upstream_cx_total: " << test_server_->counter("cluster.cluster_1.upstream_cx_total")->value() << std::endl;
 
-  // the first request should complete with a 503
+  // the request should complete with a 503
   ASSERT_TRUE(aggregate_cluster_response1->waitForEndStream());
   EXPECT_EQ("503", aggregate_cluster_response1->headers().getStatusValue());
 
@@ -1642,22 +1647,20 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
   // aggregate_cluster_response1->headers().getStatusValue()
   //   Which is: "504"
 
-  // why is this a 504? what is a 504?
+  // why is this a 504?
+  // is this MEANT to be a 504?
+
+  // https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/504
 
   // 503 - Service Unavailable
   // 504 - Gateway Timeout
 
-  // from looking at the docs (see below) the route timeout is 15s (which includes ALL retries)
-  // but i would have thought the requests/retries here would complete WAY before 15s??
-  // could this relate to the backoff strategy pushing it beyond 15s? (i doubt it?)
+  // so the request should actually complete with a 504 ?
 
-  // https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/route/v3/route_components.proto#envoy-v3-api-field-config-route-v3-routeaction-timeout
-
-  // timeout (Duration) 
-  // Specifies the upstream timeout for the route. If not specified, the default is 15s. 
-  // This spans between the point at which the entire downstream request (i.e. end-of-stream) has been processed and when the upstream response has been completely processed. 
-  // A value of 0 will disable the route’s timeout.
-  // Note : This timeout includes all retries. See also x-envoy-upstream-rq-timeout-ms, x-envoy-upstream-rq-per-try-timeout-ms, and the retry overview.
+  // from looking at the docs (see below) 
+  // the route timeout is by default 15s (which includes ALL retries)
+  // i would have thought the requests/retries here would complete WAY before 15s??
+  // could this relate to the backoff strategy pushing it beyond 15s ...i doubt it?
 
   // https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/http/http_routing
 
@@ -1690,7 +1693,15 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
   // - Specifying a retry host predicate allows for reattempting host selection when certain hosts are selected (e.g. when an already attempted host is selected), 
   //   while a retry priority can be configured to adjust the priority load used when selecting a priority for retries.
   // - Note : Envoy retries requests when x-envoy-overloaded is present. 
-  //          It is recommended to either configure retry budgets (preferred) or set maximum active retries circuit breaker to an appropriate value to avoid retry storms. 
+  //          It is recommended to either configure retry budgets (preferred) or set maximum active retries circuit breaker to an appropriate value to avoid retry storms.
+  
+  // https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/route/v3/route_components.proto#envoy-v3-api-field-config-route-v3-routeaction-timeout
+
+  // timeout (Duration) 
+  // Specifies the upstream timeout for the route. If not specified, the default is 15s. 
+  // This spans between the point at which the entire downstream request (i.e. end-of-stream) has been processed and when the upstream response has been completely processed. 
+  // A value of 0 will disable the route’s timeout.
+  // Note : This timeout includes all retries. See also x-envoy-upstream-rq-timeout-ms, x-envoy-upstream-rq-per-try-timeout-ms, and the retry overview.
 
   std::cout << "--------------------" << std::endl;
   std::cout << "AFTER aggregate_cluster rq_retry_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open")->value() << std::endl;
@@ -1713,6 +1724,8 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
   std::cout << "AFTER cluster_1 upstream_rq_active: " << test_server_->gauge("cluster.cluster_1.upstream_rq_active")->value() << std::endl;
   std::cout << "AFTER cluster_1 upstream_cx_active: " << test_server_->gauge("cluster.cluster_1.upstream_cx_active")->value() << std::endl;
   std::cout << "AFTER cluster_1 upstream_cx_total: " << test_server_->counter("cluster.cluster_1.upstream_cx_total")->value() << std::endl;
+
+  // !! why is no teardown needed here?
  
   std::cout << "---------- 99 TEST END" << std::endl;
 }
@@ -1756,24 +1769,24 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
 // DURING1 cluster_1 remaining_retries: 1
 // DURING1 cluster_1 upstream_rq_retry: 0
 // DURING1 cluster_1 upstream_rq_retry_overflow: 0
-// DURING1 cluster_1 upstream_rq_total: 1
+// DURING1 cluster_1 upstream_rq_total: 1  <-- 1 request
 // DURING1 cluster_1 upstream_rq_active: 1
 // DURING1 cluster_1 upstream_cx_active: 1
 // DURING1 cluster_1 upstream_cx_total: 1
 // --------------------
-// DURING2 aggregate_cluster rq_retry_open: 1
-// DURING2 aggregate_cluster remaining_retries: 0
-// DURING2 aggregate_cluster upstream_rq_retry: 1
+// DURING2 aggregate_cluster rq_retry_open: 1  <-- aggregate_cluster circuit breaker triggered
+// DURING2 aggregate_cluster remaining_retries: 0  <-- 0 remaining retries
+// DURING2 aggregate_cluster upstream_rq_retry: 1 <-- 1 retry
 // DURING2 aggregate_cluster upstream_rq_retry_overflow: 0
 // DURING2 aggregate_cluster upstream_rq_total: 0
 // DURING2 aggregate_cluster upstream_rq_active: 0
 // DURING2 aggregate_cluster upstream_cx_active: 0
 // DURING2 aggregate_cluster upstream_cx_total: 0
-// DURING2 cluster_1 rq_retry_open: 0
+// DURING2 cluster_1 rq_retry_open: 0  <-- cluster_1 circuit breaker untouched
 // DURING2 cluster_1 remaining_retries: 1
 // DURING2 cluster_1 upstream_rq_retry: 0
 // DURING2 cluster_1 upstream_rq_retry_overflow: 0
-// DURING2 cluster_1 upstream_rq_total: 2
+// DURING2 cluster_1 upstream_rq_total: 2  <-- 2 requests
 // DURING2 cluster_1 upstream_rq_active: 1
 // DURING2 cluster_1 upstream_cx_active: 1
 // DURING2 cluster_1 upstream_cx_total: 1
@@ -1791,10 +1804,10 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
 // ... Google Test internal frames ...
 
 // --------------------
-// DURING3 aggregate_cluster rq_retry_open: 1
-// DURING3 aggregate_cluster remaining_retries: 0
-// DURING3 aggregate_cluster upstream_rq_retry: 2
-// DURING3 aggregate_cluster upstream_rq_retry_overflow: 0
+// DURING3 aggregate_cluster rq_retry_open: 1  <-- aggregate_cluster circuit breaker still triggered
+// DURING3 aggregate_cluster remaining_retries: 0  <-- 0 remaining retries
+// DURING3 aggregate_cluster upstream_rq_retry: 2  <-- 2 retries
+// DURING3 aggregate_cluster upstream_rq_retry_overflow: 0  <-- but overflow is not incremented?
 // DURING3 aggregate_cluster upstream_rq_total: 0
 // DURING3 aggregate_cluster upstream_rq_active: 0
 // DURING3 aggregate_cluster upstream_cx_active: 0
@@ -1803,11 +1816,11 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
 // DURING3 cluster_1 remaining_retries: 1
 // DURING3 cluster_1 upstream_rq_retry: 0
 // DURING3 cluster_1 upstream_rq_retry_overflow: 0
-// DURING3 cluster_1 upstream_rq_total: 3
+// DURING3 cluster_1 upstream_rq_total: 3  <-- 3 requests ??
 // DURING3 cluster_1 upstream_rq_active: 1
 // DURING3 cluster_1 upstream_cx_active: 1
 // DURING3 cluster_1 upstream_cx_total: 1
-// test/extensions/clusters/aggregate/cluster_integration_test.cc:1630: Failure
+// test/extensions/clusters/aggregate/cluster_integration_test.cc:1638: Failure
 // Expected equality of these values:
 //   "503"
 //     Which is: 0x8601fd
@@ -1835,7 +1848,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
 // AFTER cluster_1 upstream_rq_retry: 0
 // AFTER cluster_1 upstream_rq_retry_overflow: 0
 // AFTER cluster_1 upstream_rq_total: 3
-// AFTER cluster_1 upstream_rq_active: 0
+// AFTER cluster_1 upstream_rq_active: 0  <-- no more active requests
 // AFTER cluster_1 upstream_cx_active: 1
 // AFTER cluster_1 upstream_cx_total: 1
 // ---------- 99 TEST END
