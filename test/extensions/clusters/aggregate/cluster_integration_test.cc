@@ -389,138 +389,132 @@ TEST_P(AggregateIntegrationTest, CircuitBreakingAggregateLimitLowerThanChildMaxR
   cleanupUpstreamAndDownstream();
 }
 
-// TEST_P(AggregateIntegrationTest, CircuitBreakingChildLimitLowerThanAggregateMaxPendingRequets) {
+TEST_P(AggregateIntegrationTest, CircuitBreakingChildLimitLowerThanAggregateMaxPendingRequets) {
 
-//   // Add circuit breaker config to aggregate cluster
-//   config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
-//     auto* static_resources = bootstrap.mutable_static_resources();
-//     auto* cluster = static_resources->mutable_clusters(1);
-//     auto* threshold = cluster->mutable_circuit_breakers()->mutable_thresholds()->Add();
-//     threshold->set_track_remaining(true);
-//     threshold->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-//     threshold->mutable_max_pending_requests()->set_value(10);
-//   });
+  // Add circuit breaker config to aggregate cluster
+  config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
+    auto* static_resources = bootstrap.mutable_static_resources();
+    auto* cluster = static_resources->mutable_clusters(1);
+    auto* threshold = cluster->mutable_circuit_breakers()->mutable_thresholds()->Add();
+    threshold->set_track_remaining(true);
+    threshold->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
+    threshold->mutable_max_pending_requests()->set_value(10);
+  });
 
-//   initialize();
+  initialize();
 
-//   // Create an updated version of cluster1_ with circuit breakers
-//   auto* threshold_cluster1 = cluster1_.mutable_circuit_breakers()->mutable_thresholds()->Add();
-//   threshold_cluster1->set_track_remaining(true);
-//   threshold_cluster1->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-//   threshold_cluster1->mutable_max_pending_requests()->set_value(1);
+  // Create an updated version of cluster1_ with circuit breakers
+  auto* threshold_cluster1 = cluster1_.mutable_circuit_breakers()->mutable_thresholds()->Add();
+  threshold_cluster1->set_track_remaining(true);
+  threshold_cluster1->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
+  threshold_cluster1->mutable_max_pending_requests()->set_value(1);
 
-//   // Use an unreachable upstream address (different from the one set for the fakeUpstreams[2]
-//   // "127.0.0.1" ) to make the request pending
-//   cluster1_.mutable_load_assignment()
-//       ->mutable_endpoints(0)
-//       ->mutable_lb_endpoints(0)
-//       ->mutable_endpoint()
-//       ->mutable_address()
-//       ->mutable_socket_address()
-//       ->set_address("1.1.1.1");
+  // Use an unreachable upstream address (different from the one set for the fakeUpstreams[2]
+  // "127.0.0.1" ) to make the request pending
+  cluster1_.mutable_load_assignment()
+      ->mutable_endpoints(0)
+      ->mutable_lb_endpoints(0)
+      ->mutable_endpoint()
+      ->mutable_address()
+      ->mutable_socket_address()
+      ->set_address("1.1.1.1");
 
-//   // Send the updated cluster via CDS
-//   sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster,
-//                                                              {cluster1_}, {cluster1_}, {},
-//                                                              "413");
+  // Send the updated cluster via CDS
+  sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster,
+                                                             {cluster1_}, {cluster1_}, {}, "413");
 
-//   // before sending a request - cluster_1
-//   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_pending",
-//   1); test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open",
-//   0);
+  // before sending a request - cluster_1
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_pending", 1);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 0);
 
-//   // before sending a request - aggregate_cluster
-//   test_server_->waitForGaugeEq(
-//       "cluster.aggregate_cluster.circuit_breakers.default.remaining_pending", 10);
-//   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open",
-//                                0);
+  // before sending a request - aggregate_cluster
+  test_server_->waitForGaugeEq(
+      "cluster.aggregate_cluster.circuit_breakers.default.remaining_pending", 10);
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open",
+                               0);
 
-//   codec_client_ = makeHttpConnection(lookupPort("http"));
-//   auto response = codec_client_->makeHeaderOnlyRequest(
-//       Http::TestRequestHeaderMapImpl{{":method", "GET"},
-//                                      {":path", "/aggregatecluster"},
-//                                      {":scheme", "http"},
-//                                      {":authority", "host"}});
+  codec_client_ = makeHttpConnection(lookupPort("http"));
+  auto response = codec_client_->makeHeaderOnlyRequest(
+      Http::TestRequestHeaderMapImpl{{":method", "GET"},
+                                     {":path", "/aggregatecluster"},
+                                     {":scheme", "http"},
+                                     {":authority", "host"}});
 
-//   // after sending a request - cluster_1
-//   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_pending",
-//   0); test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open",
-//   1);
+  // after sending a request - cluster_1
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_pending", 0);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 1);
 
-//   // after sending a request - aggregate_cluster
-//   test_server_->waitForGaugeEq(
-//       "cluster.aggregate_cluster.circuit_breakers.default.remaining_pending", 10);
-//   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open",
-//                                0);
+  // after sending a request - aggregate_cluster
+  test_server_->waitForGaugeEq(
+      "cluster.aggregate_cluster.circuit_breakers.default.remaining_pending", 10);
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open",
+                               0);
 
-//   cleanupUpstreamAndDownstream();
-// }
+  cleanupUpstreamAndDownstream();
+}
 
-// TEST_P(AggregateIntegrationTest, CircuitBreakingAggregateLimitLowerThanChildMaxPendingRequests) {
+TEST_P(AggregateIntegrationTest, CircuitBreakingAggregateLimitLowerThanChildMaxPendingRequests) {
 
-//   config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
-//     auto* static_resources = bootstrap.mutable_static_resources();
-//     auto* cluster = static_resources->mutable_clusters(1);
-//     auto* threshold = cluster->mutable_circuit_breakers()->mutable_thresholds()->Add();
-//     threshold->set_track_remaining(true);
-//     threshold->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-//     threshold->mutable_max_pending_requests()->set_value(1);
-//   });
+  config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
+    auto* static_resources = bootstrap.mutable_static_resources();
+    auto* cluster = static_resources->mutable_clusters(1);
+    auto* threshold = cluster->mutable_circuit_breakers()->mutable_thresholds()->Add();
+    threshold->set_track_remaining(true);
+    threshold->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
+    threshold->mutable_max_pending_requests()->set_value(1);
+  });
 
-//   initialize();
+  initialize();
 
-//   // Create an updated version of cluster1_ with circuit breakers
-//   auto* threshold_cluster1 = cluster1_.mutable_circuit_breakers()->mutable_thresholds()->Add();
-//   threshold_cluster1->set_track_remaining(true);
-//   threshold_cluster1->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-//   threshold_cluster1->mutable_max_pending_requests()->set_value(10);
+  // Create an updated version of cluster1_ with circuit breakers
+  auto* threshold_cluster1 = cluster1_.mutable_circuit_breakers()->mutable_thresholds()->Add();
+  threshold_cluster1->set_track_remaining(true);
+  threshold_cluster1->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
+  threshold_cluster1->mutable_max_pending_requests()->set_value(10);
 
-//   // Use an unreachable upstream address (different from the one set for the fakeUpstreams[2]
-//   // "127.0.0.1" ) to make the request pending
-//   cluster1_.mutable_load_assignment()
-//       ->mutable_endpoints(0)
-//       ->mutable_lb_endpoints(0)
-//       ->mutable_endpoint()
-//       ->mutable_address()
-//       ->mutable_socket_address()
-//       ->set_address("1.1.1.1");
+  // Use an unreachable upstream address (different from the one set for the fakeUpstreams[2]
+  // "127.0.0.1" ) to make the request pending
+  cluster1_.mutable_load_assignment()
+      ->mutable_endpoints(0)
+      ->mutable_lb_endpoints(0)
+      ->mutable_endpoint()
+      ->mutable_address()
+      ->mutable_socket_address()
+      ->set_address("1.1.1.1");
 
-//   // Send the updated cluster via CDS
-//   sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster,
-//                                                              {cluster1_}, {cluster1_}, {},
-//                                                              "413");
+  // Send the updated cluster via CDS
+  sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster,
+                                                             {cluster1_}, {cluster1_}, {}, "413");
 
-//   // before sending a request - cluster_1
-//   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_pending",
-//   10); test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open",
-//   0);
+  // before sending a request - cluster_1
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_pending", 10);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 0);
 
-//   // before sending a request - aggregate_cluster
-//   test_server_->waitForGaugeEq(
-//       "cluster.aggregate_cluster.circuit_breakers.default.remaining_pending", 1);
-//   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open",
-//                                0);
+  // before sending a request - aggregate_cluster
+  test_server_->waitForGaugeEq(
+      "cluster.aggregate_cluster.circuit_breakers.default.remaining_pending", 1);
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open",
+                               0);
 
-//   codec_client_ = makeHttpConnection(lookupPort("http"));
-//   auto response = codec_client_->makeHeaderOnlyRequest(
-//       Http::TestRequestHeaderMapImpl{{":method", "GET"},
-//                                      {":path", "/aggregatecluster"},
-//                                      {":scheme", "http"},
-//                                      {":authority", "host"}});
+  codec_client_ = makeHttpConnection(lookupPort("http"));
+  auto response = codec_client_->makeHeaderOnlyRequest(
+      Http::TestRequestHeaderMapImpl{{":method", "GET"},
+                                     {":path", "/aggregatecluster"},
+                                     {":scheme", "http"},
+                                     {":authority", "host"}});
 
-//   // after sending a request - cluster_1
-//   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_pending",
-//   9); test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open",
-//   0);
+  // after sending a request - cluster_1
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_pending", 9);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 0);
 
-//   // after sending a request - aggregate_cluster
-//   test_server_->waitForGaugeEq(
-//       "cluster.aggregate_cluster.circuit_breakers.default.remaining_pending", 1);
-//   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open",
-//                                0);
+  // after sending a request - aggregate_cluster
+  test_server_->waitForGaugeEq(
+      "cluster.aggregate_cluster.circuit_breakers.default.remaining_pending", 1);
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open",
+                               0);
 
-//   cleanupUpstreamAndDownstream();
-// }
+  cleanupUpstreamAndDownstream();
+}
 
 TEST_P(AggregateIntegrationTest, CircuitBreakingChildLimitLowerThanAggregateMaxRetries) {
   config_helper_.addConfigModifier(
