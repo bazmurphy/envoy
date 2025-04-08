@@ -1665,13 +1665,18 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
   printClusterStats("REQUEST-2-RETRY-1");
 
   // this is where the problems start
-  // i guess because i haven't dealt with either request1 retry OR request2 retry
-  // from the perspective of the upstream cluster
+  // i guess because i haven't dealt with either request1-retry1 OR request2-retry-1
+  // from the perspective of the upstream cluster (encode headers and end stream etc.)
 
   // because we have this singular "upstream_request_" object 
-  // (which presumably gets overwritten each time, so it is request1-retry1, then request2, then request2-retry1)
-  // i am not sure how to handle completing the request1-retry1 and request2-retry1 in order to unwind the test
+  // which presumably gets overwritten each time,
+  // so it becomes request1-retry1, then request2, then request2-retry1 in that order
+  // and i am not sure how to handle completing request1-retry1 and request2-retry1
+  // since upstream_request_ has been overwritten
+  
+  // i want to unwind the test
   // and be able to show the stats "AFTER" where the circuit breaker is back to normal
+  // like i have with all the other tests
 
   std::cout << "--------------------" << std::endl;
   std::cout << "DOWNSTREAM RESPONSE 1: WAIT FOR END STREAM" << std::endl;
