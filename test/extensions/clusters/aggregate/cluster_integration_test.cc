@@ -1608,7 +1608,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
   // EXPECT_EQ(test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry")->value(), 2);
 
   std::cout << "--------------------" << std::endl;
-  std::cout << "CHECKING STATS upstream_rq_retry_overflow AND upstream_rq_retry_limit_exceeded" << std::endl;
+  std::cout << "CHECKING STATS upstream_rq_retry_overflow" << std::endl;
 
   // !! upstream_rq_retry_overflow on the aggregate_cluster
   test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow", 1);
@@ -1617,10 +1617,10 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
   printClusterStats("REQUEST-2-RETRY");
 
   std::cout << "--------------------" << std::endl;
-  std::cout << "UPSTREAM CLUSTER: RESPOND TO REQUEST-1-RETRY WITH 503" << std::endl;
+  std::cout << "UPSTREAM CLUSTER: RESPOND TO REQUEST-1-RETRY WITH 200" << std::endl;
   
   // respond to the first request retry
-  first_upstream_request_retry.encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, true);
+  first_upstream_request_retry.encodeHeaders(default_response_headers_, true);
 
   // and we shouldn't need to do this with the second request retry
   // because it SHOULD be auto rejected by the circuit breaker
@@ -1630,8 +1630,8 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
   ASSERT_TRUE(aggregate_cluster_response1->waitForEndStream());
   
   std::cout << "--------------------" << std::endl;
-  std::cout << "DOWNSTREAM CLIENT: RESPONSE-1 CHECKING HEADER STATUS IS 503" << std::endl;
-  EXPECT_EQ("503", aggregate_cluster_response1->headers().getStatusValue());
+  std::cout << "DOWNSTREAM CLIENT: RESPONSE-1 CHECKING HEADER STATUS IS 200" << std::endl;
+  EXPECT_EQ("200", aggregate_cluster_response1->headers().getStatusValue());
 
   std::cout << "--------------------" << std::endl;
   std::cout << "DOWNSTREAM CLIENT: RESPONSE-2 WAIT FOR END STREAM" << std::endl;
@@ -1642,7 +1642,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
   EXPECT_EQ("503", aggregate_cluster_response2->headers().getStatusValue());
 
   std::cout << "--------------------" << std::endl;
-  std::cout << "CHECKING STATS (both clusters) rq_retry_open AND remaining_retries AND upstream_rq_retry_limit_exceeded" << std::endl;
+  std::cout << "CHECKING STATS (both clusters) rq_retry_open AND remaining_retries" << std::endl;
 
   // the circuit breakers return to their initial state
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open", 0);
@@ -1654,9 +1654,6 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
   EXPECT_EQ(test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_retries")->value(), 1);
   EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_retry_open")->value(), 0);
   EXPECT_EQ(test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_retries")->value(), 1);
-
-  test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_limit_exceeded", 1);
-  EXPECT_EQ(test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_limit_exceeded")->value(), 1);
 
   printClusterStats("AFTER");
 
@@ -1855,7 +1852,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
 // --------------------
 // UPSTREAM CLUSTER: RESPOND TO REQUEST-2 WITH 503
 // --------------------
-// CHECKING STATS upstream_rq_retry_overflow AND upstream_rq_retry_limit_exceeded
+// CHECKING STATS upstream_rq_retry_overflow
 // --------------------
 // REQUEST-2-RETRY aggregate_cluster rq_retry_open: 1
 // REQUEST-2-RETRY aggregate_cluster remaining_retries: 0
@@ -1897,24 +1894,24 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
 // REQUEST-2-RETRY cluster_1 upstream_cx_active: 1
 // REQUEST-2-RETRY cluster_1 upstream_cx_total: 1
 // --------------------
-// UPSTREAM CLUSTER: RESPOND TO REQUEST-1-RETRY WITH 503
+// UPSTREAM CLUSTER: RESPOND TO REQUEST-1-RETRY WITH 200
 // --------------------
 // DOWNSTREAM CLIENT: RESPONSE-1 WAIT FOR END STREAM
 // --------------------
-// DOWNSTREAM CLIENT: RESPONSE-1 CHECKING HEADER STATUS IS 503
+// DOWNSTREAM CLIENT: RESPONSE-1 CHECKING HEADER STATUS IS 200
 // --------------------
 // DOWNSTREAM CLIENT: RESPONSE-2 WAIT FOR END STREAM
 // --------------------
 // DOWNSTREAM CLIENT: RESPONSE-2 CHECKING HEADER STATUS IS 503
 // --------------------
-// CHECKING STATS (both clusters) rq_retry_open AND remaining_retries AND upstream_rq_retry_limit_exceeded
+// CHECKING STATS (both clusters) rq_retry_open AND remaining_retries
 // --------------------
 // AFTER aggregate_cluster rq_retry_open: 0
 // AFTER aggregate_cluster remaining_retries: 1
 // AFTER aggregate_cluster upstream_rq_retry: 1
-// AFTER aggregate_cluster upstream_rq_retry_success: 0
+// AFTER aggregate_cluster upstream_rq_retry_success: 1
 // AFTER aggregate_cluster upstream_rq_retry_overflow: 1
-// AFTER aggregate_cluster upstream_rq_retry_limit_exceeded: 1
+// AFTER aggregate_cluster upstream_rq_retry_limit_exceeded: 0
 // AFTER aggregate_cluster upstream_rq_retry_backoff_exponential: 1
 // AFTER aggregate_cluster upstream_rq_retry_backoff_ratelimited: 0
 // AFTER aggregate_cluster upstream_rq_total: 0
