@@ -178,6 +178,25 @@ public:
     xds_stream_->startGrpcStream();
   }
 
+  void staticClusterCircuitBreakerModifier(int cluster_index, uint32_t max_connections = 1024,
+                                           uint32_t max_requests = 1024,
+                                           uint32_t max_pending_requests = 1024,
+                                           uint32_t max_retries = 3) {
+    config_helper_.addConfigModifier(
+        [cluster_index, max_connections, max_requests, max_pending_requests,
+         max_retries](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
+          auto* static_resources = bootstrap.mutable_static_resources();
+          auto* cluster = static_resources->mutable_clusters(cluster_index);
+          auto* threshold = cluster->mutable_circuit_breakers()->mutable_thresholds()->Add();
+          threshold->set_track_remaining(true);
+          threshold->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
+          threshold->mutable_max_connections()->set_value(max_connections);
+          threshold->mutable_max_requests()->set_value(max_requests);
+          threshold->mutable_max_pending_requests()->set_value(max_pending_requests);
+          threshold->mutable_max_retries()->set_value(max_retries);
+        });
+  };
+
   const bool deferred_cluster_creation_;
   envoy::config::cluster::v3::Cluster cluster1_;
   envoy::config::cluster::v3::Cluster cluster2_;
@@ -190,14 +209,7 @@ INSTANTIATE_TEST_SUITE_P(
 TEST_P(AggregateIntegrationTest, CircuitBreakingChildLimitLowerThanAggregateMaxConn) {
 
   // Add circuit breaker config to aggregate cluster
-  config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
-    auto* static_resources = bootstrap.mutable_static_resources();
-    auto* cluster = static_resources->mutable_clusters(1);
-    auto* threshold = cluster->mutable_circuit_breakers()->mutable_thresholds()->Add();
-    threshold->set_track_remaining(true);
-    threshold->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-    threshold->mutable_max_connections()->set_value(10);
-  });
+  staticClusterCircuitBreakerModifier(1, 10U);
 
   initialize();
 
@@ -237,14 +249,9 @@ TEST_P(AggregateIntegrationTest, CircuitBreakingChildLimitLowerThanAggregateMaxC
 }
 
 TEST_P(AggregateIntegrationTest, CircuitBreakingAggregateLimitLowerThanChildMaxConn) {
-  config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
-    auto* static_resources = bootstrap.mutable_static_resources();
-    auto* cluster = static_resources->mutable_clusters(1);
-    auto* threshold = cluster->mutable_circuit_breakers()->mutable_thresholds()->Add();
-    threshold->set_track_remaining(true);
-    threshold->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-    threshold->mutable_max_connections()->set_value(1);
-  });
+  
+  // Add circuit breaker config to aggregate cluster
+  staticClusterCircuitBreakerModifier(1, 1U);
 
   initialize();
 
@@ -284,14 +291,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakingAggregateLimitLowerThanChildMaxC
 TEST_P(AggregateIntegrationTest, CircuitBreakingChildLimitLowerThanAggregateMaxRequets) {
 
   // Add circuit breaker config to aggregate cluster
-  config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
-    auto* static_resources = bootstrap.mutable_static_resources();
-    auto* cluster = static_resources->mutable_clusters(1);
-    auto* threshold = cluster->mutable_circuit_breakers()->mutable_thresholds()->Add();
-    threshold->set_track_remaining(true);
-    threshold->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-    threshold->mutable_max_requests()->set_value(10);
-  });
+  staticClusterCircuitBreakerModifier(1, 1024U, 10U);
 
   initialize();
 
@@ -341,14 +341,8 @@ TEST_P(AggregateIntegrationTest, CircuitBreakingChildLimitLowerThanAggregateMaxR
 
 TEST_P(AggregateIntegrationTest, CircuitBreakingAggregateLimitLowerThanChildMaxRequests) {
 
-  config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
-    auto* static_resources = bootstrap.mutable_static_resources();
-    auto* cluster = static_resources->mutable_clusters(1);
-    auto* threshold = cluster->mutable_circuit_breakers()->mutable_thresholds()->Add();
-    threshold->set_track_remaining(true);
-    threshold->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-    threshold->mutable_max_requests()->set_value(1);
-  });
+  // Add circuit breaker config to aggregate cluster
+  staticClusterCircuitBreakerModifier(1, 1024U, 1U);
 
   initialize();
 
@@ -394,14 +388,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakingAggregateLimitLowerThanChildMaxR
 TEST_P(AggregateIntegrationTest, CircuitBreakingChildLimitLowerThanAggregateMaxPendingRequets) {
 
   // Add circuit breaker config to aggregate cluster
-  config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
-    auto* static_resources = bootstrap.mutable_static_resources();
-    auto* cluster = static_resources->mutable_clusters(1);
-    auto* threshold = cluster->mutable_circuit_breakers()->mutable_thresholds()->Add();
-    threshold->set_track_remaining(true);
-    threshold->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-    threshold->mutable_max_pending_requests()->set_value(10);
-  });
+  staticClusterCircuitBreakerModifier(1, 1024U, 1024U, 10U);
 
   initialize();
 
@@ -457,14 +444,8 @@ TEST_P(AggregateIntegrationTest, CircuitBreakingChildLimitLowerThanAggregateMaxP
 
 TEST_P(AggregateIntegrationTest, CircuitBreakingAggregateLimitLowerThanChildMaxPendingRequests) {
 
-  config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
-    auto* static_resources = bootstrap.mutable_static_resources();
-    auto* cluster = static_resources->mutable_clusters(1);
-    auto* threshold = cluster->mutable_circuit_breakers()->mutable_thresholds()->Add();
-    threshold->set_track_remaining(true);
-    threshold->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-    threshold->mutable_max_pending_requests()->set_value(1);
-  });
+  // Add circuit breaker config to aggregate cluster
+  staticClusterCircuitBreakerModifier(1, 1024U, 1024U, 1U);
 
   initialize();
 
@@ -538,14 +519,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakingChildLimitLowerThanAggregateMaxR
       });
 
   // Add circuit breaker config to aggregate cluster
-  config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
-    auto* static_resources = bootstrap.mutable_static_resources();
-    auto* cluster = static_resources->mutable_clusters(1);
-    auto* threshold = cluster->mutable_circuit_breakers()->mutable_thresholds()->Add();
-    threshold->set_track_remaining(true);
-    threshold->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-    threshold->mutable_max_retries()->set_value(2);
-  });
+  staticClusterCircuitBreakerModifier(1, 1024U, 1024U, 1024U, 2U);
 
   initialize();
 
@@ -644,14 +618,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakingAggregateLimitLowerThanChildMaxR
       });
 
   // Add circuit breaker config to aggregate cluster
-  config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
-    auto* static_resources = bootstrap.mutable_static_resources();
-    auto* cluster = static_resources->mutable_clusters(1);
-    auto* threshold = cluster->mutable_circuit_breakers()->mutable_thresholds()->Add();
-    threshold->set_track_remaining(true);
-    threshold->set_priority(envoy::config::core::v3::RoutingPriority::DEFAULT);
-    threshold->mutable_max_retries()->set_value(2);
-  });
+  staticClusterCircuitBreakerModifier(1, 1024U, 1024U, 1024U, 1U);
 
   initialize();
 
