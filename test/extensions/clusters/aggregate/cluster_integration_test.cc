@@ -238,6 +238,11 @@ public:
     std::cout << prefix << " aggregate_cluster upstream_cx_pool_overflow: " << test_server_->counter("cluster.aggregate_cluster.upstream_cx_pool_overflow")->value() << std::endl;
     std::cout << prefix << " aggregate_cluster upstream_cx_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_cx_active")->value() << std::endl;
     std::cout << prefix << " aggregate_cluster upstream_cx_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_cx_total")->value() << std::endl;
+    std::cout << prefix << " aggregate_cluster upstream_cx_http1_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_cx_http1_total")->value() << std::endl;
+    std::cout << prefix << " aggregate_cluster upstream_cx_http2_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_cx_http2_total")->value() << std::endl;
+    std::cout << prefix << " aggregate_cluster upstream_rq_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_rq_active")->value() << std::endl;
+    std::cout << prefix << " aggregate_cluster upstream_rq_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_total")->value() << std::endl;
+
     std::cout << prefix << " aggregate_cluster upstream_rq_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_rq_active")->value() << std::endl;
     std::cout << prefix << " aggregate_cluster upstream_rq_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_total")->value() << std::endl;
     std::cout << prefix << " cluster_1 cx_pool_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.cx_pool_open")->value() << std::endl;
@@ -245,6 +250,8 @@ public:
     std::cout << prefix << " cluster_1 upstream_cx_pool_overflow: " << test_server_->counter("cluster.cluster_1.upstream_cx_pool_overflow")->value() << std::endl;
     std::cout << prefix << " cluster_1 upstream_cx_active: " << test_server_->gauge("cluster.cluster_1.upstream_cx_active")->value() << std::endl;
     std::cout << prefix << " cluster_1 upstream_cx_total: " << test_server_->counter("cluster.cluster_1.upstream_cx_total")->value() << std::endl;
+    std::cout << prefix << " cluster_1 upstream_cx_http1_total: " << test_server_->counter("cluster.cluster_1.upstream_cx_http1_total")->value() << std::endl;
+    std::cout << prefix << " cluster_1 upstream_cx_http2_total: " << test_server_->counter("cluster.cluster_1.upstream_cx_http2_total")->value() << std::endl;
     std::cout << prefix << " cluster_1 upstream_rq_active: " << test_server_->gauge("cluster.cluster_1.upstream_rq_active")->value() << std::endl;
     std::cout << prefix << " cluster_1 upstream_rq_total: " << test_server_->counter("cluster.cluster_1.upstream_rq_total")->value() << std::endl;
   }
@@ -1690,6 +1697,65 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRetries) {
   std::cout << "---------- 99 TEST END" << std::endl;
 }
 
+// --------------------
+
+// https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/cluster/v3/circuit_breaker.proto
+
+// max_connection_pools (UInt32Value) 
+// The maximum number of connection pools per cluster that Envoy will concurrently support at once. 
+// If not specified, the default is unlimited. 
+// Set this for clusters which create a large number of connection pools. 
+// See Circuit Breaking for more details.
+
+// https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/circuit_breaking
+
+// Cluster maximum concurrent connection pools
+
+// The maximum number of connection pools that can be concurrently instantiated. 
+// Some features, such as the Original Src Listener Filter, can create an unbounded number of connection pools. 
+// When a cluster has exhausted its concurrent connection pools, it will attempt to reclaim an idle one. 
+// If it cannot, then the circuit breaker will overflow. 
+// This differs from Cluster maximum connections in that connection pools never time out, whereas connections typically will. 
+// Connections automatically clean up; connection pools do not. 
+// Note that in order for a connection pool to function it needs at least one upstream connection, so this value should likely be no greater than Cluster maximum connections. 
+// If this circuit breaker overflows the upstream_cx_pool_overflow counter for the cluster will increment.
+
+// https://www.envoyproxy.io/docs/envoy/latest/configuration/upstream/cluster_manager/cluster_stats
+
+// cx_pool_open (Gauge) - Whether the connection pool circuit breaker is under its concurrency limit (0) or is at capacity and no longer admitting (1)
+
+// cluster.aggregate_cluster.circuit_breakers.default.cx_pool_open
+// cluster.cluster_1.circuit_breakers.default.cx_pool_open
+
+// upstream_cx_pool_overflow (Counter) - Total times that the cluster’s connection pool circuit breaker overflowed
+
+// cluster.aggregate_cluster.upstream_cx_pool_overflow
+
+// cluster.cluster_1.upstream_cx_pool_overflow
+
+// --------------------------
+
+// this test is much harder to achieve,
+// because we have to force envoy into making new connection pools,
+// this only happens under certain circumstances:
+
+// https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/connection_pooling#number-of-connection-pools
+
+// Number of connection pools
+
+// Each host in each cluster will have one or more connection pools. 
+// If the cluster has a single explicit protocol configured, then the host may have only a single connection pool. 
+// However, if the cluster supports multiple upstream protocols, then unless it is using ALPN, one connection pool per protocol may be allocated. 
+// Separate connection pools are also allocated for each of the following features:
+
+// - Routing priority
+// - Socket options
+// - Transport socket (e.g. TLS) options
+// - Downstream filter state objects that are hashable and marked as shared with the upstream connection.
+
+// Each worker thread maintains its own connection pools for each cluster, 
+// so if an Envoy has two threads and a cluster with both HTTP/1 and HTTP/2 support, there will be at least 4 connection pools.
+
 TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnectionPools) {
   std::cout << "---------- 00 TEST START" << std::endl;
 
@@ -1715,16 +1781,44 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnectionPools) {
     aggregate_cluster_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1000000000); // set this high
     aggregate_cluster_circuit_breakers_threshold_default->mutable_max_connection_pools()->set_value(1); // set to 1
     aggregate_cluster_circuit_breakers_threshold_default->set_track_remaining(true);
+ 
+    // https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/core/v3/protocol.proto#envoy-v3-api-field-config-core-v3-httpprotocoloptions-max-requests-per-connection
+    
+    // aiming for this config...
 
+    // clusters:
+    //   - name: aggregate_cluster
+    //     connect_timeout: 0.25s
+    //     lb_policy: CLUSTER_PROVIDED
+    //     cluster_type:
+    //       name: envoy.clusters.aggregate
+    //       typed_config:
+    //         "@type": type.googleapis.com/envoy.extensions.clusters.aggregate.v3.ClusterConfig
+    //         clusters:
+    //         - cluster_1
+    //       typed_extension_protocol_options:
+    //         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+    //           "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+    //           common_http_protocol_options:
+    //             max_requests_per_connection: 1
+    //           use_downstream_protocol_config:
+    //             http_protocol_options: {}
+    //             http2_protocol_options: {}
+
+    // try to configure aggregate_cluster to support http1.1 and http2 (and carry that through from downstream)
     envoy::extensions::upstreams::http::v3::HttpProtocolOptions http_protocol_options;
-    // set common_http_protocol_options max_requests_per_connection to 1 - so after one request the connection is torn down
+    // common http protocol options
     http_protocol_options.mutable_common_http_protocol_options()->mutable_max_requests_per_connection()->set_value(1);
-    // set http2_protocol_options max_concurrent_streams to 1 - so we can only send one stream(request) at a time on the http2 connection
-    http_protocol_options.mutable_explicit_http_config()->mutable_http2_protocol_options()->mutable_max_concurrent_streams()->set_value(1);
-      (*aggregate_cluster->mutable_typed_extension_protocol_options())
-        ["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]
-          .PackFrom(http_protocol_options);
-    });
+    // http1.1 options
+    http_protocol_options.mutable_use_downstream_protocol_config()->mutable_http_protocol_options();
+    // http2 options
+    http_protocol_options.mutable_use_downstream_protocol_config()->mutable_http2_protocol_options();
+    http_protocol_options.mutable_use_downstream_protocol_config()->mutable_http2_protocol_options()->mutable_max_concurrent_streams()->set_value(1);
+
+    (*aggregate_cluster->mutable_typed_extension_protocol_options())
+      ["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]
+        .PackFrom(http_protocol_options);
+  });
 
   initialize();
 
@@ -1738,11 +1832,16 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnectionPools) {
   cluster1_circuit_breakers_threshold_default->mutable_max_connection_pools()->set_value(1);// set to 1
   cluster1_circuit_breakers_threshold_default->set_track_remaining(true);
 
+  // try to configure cluster_1 to support http1.1 and http2 (and carry that through from downstream)
   envoy::extensions::upstreams::http::v3::HttpProtocolOptions http_protocol_options;
-  // set common_http_protocol_options max_requests_per_connection to 1 - so after one request the connection is torn down
+  // common http protocol options
   http_protocol_options.mutable_common_http_protocol_options()->mutable_max_requests_per_connection()->set_value(1);
-  // set http2_protocol_options max_concurrent_streams to 1 - so we can only send one stream(request) at a time on the http2 connection
-  http_protocol_options.mutable_explicit_http_config()->mutable_http2_protocol_options()->mutable_max_concurrent_streams()->set_value(1);
+  // http1.1 options
+  http_protocol_options.mutable_use_downstream_protocol_config()->mutable_http_protocol_options();
+  // http2 options
+  http_protocol_options.mutable_use_downstream_protocol_config()->mutable_http2_protocol_options();
+  http_protocol_options.mutable_use_downstream_protocol_config()->mutable_http2_protocol_options()->mutable_max_concurrent_streams()->set_value(1);
+
   (*cluster1_.mutable_typed_extension_protocol_options())
     ["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]
       .PackFrom(http_protocol_options);
@@ -1778,67 +1877,28 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnectionPools) {
   // upstream_request_->encodeHeaders(default_response_headers_, true);
 
   // std::cout << "---------- HANDLE RESPONSE 1 ON DOWNSTREAM CLIENT" << std::endl;
-  // ASSERT_TRUE(response1->waitForEndStream());
-  // EXPECT_EQ("200", response1->headers().getStatusValue());
+  // ASSERT_TRUE(aggregate_cluster_response1->waitForEndStream());
+  // EXPECT_EQ("200", aggregate_cluster_response1->headers().getStatusValue());
 
-  // printStatsForMaxConnectionPools("AFTER FIRST REQUEST COMPLETES");
-
-  // std::cout << "---------- WAIT FOR UPSTREAM CONNECTION TO BE CLOSED DUE TO max_requests_per_connection = 1" << std::endl;
-  // ASSERT_TRUE(fake_upstream_connection_->waitForDisconnect());
-  // fake_upstream_connection_.reset();
-
-  printStatsForMaxConnectionPools("BEFORE SENDING SECOND REQUEST");
-
-  // need to try and edit the socket options because this should make a new connection pool
-  // https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/connection_pooling#number-of-connection-pools
-
-  // this is now out of my depth... to understand socket configuration...
+  // printStatsForMaxConnectionPools("AFTER FIRST REQUEST");
   
-  // Envoy::Network::ConnectionSocket::OptionsSharedPtr &socket_options;
-  // auto client_connection = makeClientConnectionWithOptions(lookupPort("http"), socket_options);
-  // auto codec_client2 = makeHttpConnection(std::move(client_connection));
-  
-  std::cout << "---------- SEND SECOND REQUEST" << std::endl;
-  auto aggregate_cluster_response2 = codec_client_->makeHeaderOnlyRequest(
-      Http::TestRequestHeaderMapImpl{{":method", "GET"}, {":path", "/aggregatecluster"},{":scheme", "http"}, {":authority", "host"}}
-  );
+  // but the cx_pool_open circuit breaker reverts when we complete the request???
+  // AFTER FIRST REQUEST cluster_1 cx_pool_open: 0
 
-  std::cout << "---------- WAIT FOR SECOND REQUEST TO REACH UPSTREAM" << std::endl;
-  waitForNextUpstreamRequest(FirstUpstreamIndex);
+  std::cout << "---------- MAKE HTTP1.1 CONNECTION AND SEND REQUEST" << std::endl;
+  // try this -_-
+  auto response = IntegrationUtil::makeSingleRequest(
+      lookupPort("http"),           // port
+      "GET",                        // method
+      "/aggregatecluster",          // path
+      "",                           // body
+      Http::CodecType::HTTP1,       // upstream protocol
+      version_);                    // IP version
 
-  // std::cout << "---------- WAIT FOR cluster.cluster_1.upstream_cx_pool_overflow = 1" << std::endl;
-  // test_server_->waitForCounterEq("cluster.cluster_1.upstream_cx_pool_overflow", 1);
-  
-  std::cout << "---------- CHECKING STATS AFTER SECOND CONNECTION POOL ATTEMPT" << std::endl;
   printStatsForMaxConnectionPools("DURING SECOND REQUEST");
 
-  // std::cout << "---------- RESPOND TO THE FIRST REQUEST WITH 200" << std::endl;
-  // upstream_request_->encodeHeaders(default_response_headers_, true);
-
-  // std::cout << "---------- HANDLE RESPONSE 2 ON DOWNSTREAM CLIENT" << std::endl;
-  // ASSERT_TRUE(response2->waitForEndStream());
-  // EXPECT_EQ("200", response2->headers().getStatusValue());
-
-  // printStatsForMaxConnectionPools("AFTER SECOND REQUEST COMPLETES");
-
-  // std::cout << "---------- RESPOND TO THE SECOND REQUEST WITH 200" << std::endl;
-  // upstream_request_->encodeHeaders(default_response_headers_, true);
-
-  // std::cout << "---------- HANDLE RESPONSE 2 ON DOWNSTREAM CLIENT" << std::endl;
-  // ASSERT_TRUE(response2->waitForEndStream());
-  // EXPECT_EQ("200", response2->headers().getStatusValue());
-
-  // std::cout << "---------- WAIT FOR UPSTREAM CONNECTION TO BE CLOSED DUE TO max_requests_per_connection = 1" << std::endl;
-  // ASSERT_TRUE(fake_upstream_connection_->waitForDisconnect());
-  // fake_upstream_connection_.reset();
-
-  // std::cout << "---------- WAIT FOR cluster.cluster_1.circuit_breakers.default.cx_pool_open = 0" << std::endl;
-  
-  // // verify that the connection pool is cleaned up after closing all connections
-  // test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.cx_pool_open", 0);
-  
-  // std::cout << "---------- STATS AFTER CONNECTION CLOSE" << std::endl;
-  // printStatsForMaxConnectionPools("AFTER");
+  std::cout << "---------- WAIT FOR cluster.cluster_1.upstream_cx_pool_overflow = 1" << std::endl;
+  test_server_->waitForCounterEq("cluster.cluster_1.upstream_cx_pool_overflow", 1);
 
   cleanupUpstreamAndDownstream();
 
@@ -1857,6 +1917,10 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnectionPools) {
 // BEFORE aggregate_cluster upstream_cx_pool_overflow: 0
 // BEFORE aggregate_cluster upstream_cx_active: 0
 // BEFORE aggregate_cluster upstream_cx_total: 0
+// BEFORE aggregate_cluster upstream_cx_http1_total: 0
+// BEFORE aggregate_cluster upstream_cx_http2_total: 0
+// BEFORE aggregate_cluster upstream_rq_active: 0
+// BEFORE aggregate_cluster upstream_rq_total: 0
 // BEFORE aggregate_cluster upstream_rq_active: 0
 // BEFORE aggregate_cluster upstream_rq_total: 0
 // BEFORE cluster_1 cx_pool_open: 0
@@ -1864,10 +1928,12 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnectionPools) {
 // BEFORE cluster_1 upstream_cx_pool_overflow: 0
 // BEFORE cluster_1 upstream_cx_active: 0
 // BEFORE cluster_1 upstream_cx_total: 0
+// BEFORE cluster_1 upstream_cx_http1_total: 0
+// BEFORE cluster_1 upstream_cx_http2_total: 0
 // BEFORE cluster_1 upstream_rq_active: 0
 // BEFORE cluster_1 upstream_rq_total: 0
 // ---------- MAKE HTTP CONNECTION
-// ---------- SEND FIRST REQUEST WITH CUSTOM HEADER
+// ---------- SEND FIRST REQUEST
 // ---------- WAIT FOR FIRST REQUEST TO REACH UPSTREAM
 // ---------- WAIT FOR cluster.cluster_1.circuit_breakers.default.cx_pool_open = 1
 // DURING FIRST REQUEST aggregate_cluster cx_pool_open: 0
@@ -1875,6 +1941,10 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnectionPools) {
 // DURING FIRST REQUEST aggregate_cluster upstream_cx_pool_overflow: 0
 // DURING FIRST REQUEST aggregate_cluster upstream_cx_active: 0
 // DURING FIRST REQUEST aggregate_cluster upstream_cx_total: 0
+// DURING FIRST REQUEST aggregate_cluster upstream_cx_http1_total: 0
+// DURING FIRST REQUEST aggregate_cluster upstream_cx_http2_total: 0
+// DURING FIRST REQUEST aggregate_cluster upstream_rq_active: 0
+// DURING FIRST REQUEST aggregate_cluster upstream_rq_total: 0
 // DURING FIRST REQUEST aggregate_cluster upstream_rq_active: 0
 // DURING FIRST REQUEST aggregate_cluster upstream_rq_total: 0
 // DURING FIRST REQUEST cluster_1 cx_pool_open: 1
@@ -1882,36 +1952,135 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnectionPools) {
 // DURING FIRST REQUEST cluster_1 upstream_cx_pool_overflow: 0
 // DURING FIRST REQUEST cluster_1 upstream_cx_active: 1
 // DURING FIRST REQUEST cluster_1 upstream_cx_total: 1
+// DURING FIRST REQUEST cluster_1 upstream_cx_http1_total: 0
+// DURING FIRST REQUEST cluster_1 upstream_cx_http2_total: 1
 // DURING FIRST REQUEST cluster_1 upstream_rq_active: 1
 // DURING FIRST REQUEST cluster_1 upstream_rq_total: 1
-// ---------- SEND SECOND REQUEST WITH CUSTOM HEADER
+// ---------- MAKE HTTP1.1 CONNECTION AND SEND REQUEST
+// test/integration/utility.cc:102: Failure
+// Failed
+// Stack trace:
+//   0x3573003: Envoy::BufferingStreamDecoder::onResetStream()
+//   0x5164021: Envoy::Http::StreamCallbackHelper::runResetCallbacks()
+//   0x56b404c: Envoy::Http::Http1::ClientConnectionImpl::onResetStream()
+//   0x5693180: Envoy::Http::Http1::ConnectionImpl::onResetStreamBase()
+//   0x5692def: Envoy::Http::Http1::StreamEncoderImpl::resetStream()
+//   0x5687681: Envoy::Http::CodecClient::onEvent()
+//   0x609e31a: Envoy::Network::ConnectionImplBase::raiseConnectionEvent()
+//   0x607eaa9: Envoy::Network::ConnectionImpl::raiseEvent()
+//   0x607d92d: Envoy::Network::ConnectionImpl::closeSocket()
+//   0x608d8b6: Envoy::Network::ConnectionImpl::onReadReady()
+//   0x60882e3: Envoy::Network::ConnectionImpl::onFileEvent()
+//   0x609760d: Envoy::Network::ConnectionImpl::ConnectionImpl()::$_7::operator()()
+//   0x60975c4: std::__invoke_impl<>()
+//   0x6097545: std::__invoke_r<>()
+//   0x6097425: std::_Function_handler<>::_M_invoke()
+//   0x604ee17: std::function<>::operator()()
+//   0x60465e2: Envoy::Event::DispatcherImpl::createFileEvent()::$_6::operator()()
+//   0x6046584: std::__invoke_impl<>()
+//   0x6046515: std::__invoke_r<>()
+//   0x6046385: std::_Function_handler<>::_M_invoke()
+//   0x604ee17: std::function<>::operator()()
+//   0x6055f65: Envoy::Event::FileEventImpl::mergeInjectedEventsAndRunCb()
+//   0x60566a4: Envoy::Event::FileEventImpl::assignEvents()::$_11::operator()()
+//   0x60562f9: Envoy::Event::FileEventImpl::assignEvents()::$_11::__invoke()
+//   0x6cc982b: event_persist_closure
+//   0x6cc8ea2: event_process_active_single_queue
+//   0x6cc37c8: event_process_active
+//   0x6cc26cc: event_base_loop
+//   0x6491e64: Envoy::Event::LibeventScheduler::run()
+//   0x6040829: Envoy::Event::DispatcherImpl::run()
+//   0x3574088: Envoy::sendRequestAndWaitForResponse()
+//   0x3574a61: Envoy::IntegrationUtil::makeSingleRequest()
+//   0x3575988: Envoy::IntegrationUtil::makeSingleRequest()
+//   0x2b8257c: Envoy::(anonymous namespace)::AggregateIntegrationTest_CircuitBreakerTestMaxConnectionPools_Test::TestBody()
+//   0x74501cb: testing::internal::HandleSehExceptionsInMethodIfSupported<>()
+//   0x743fd7d: testing::internal::HandleExceptionsInMethodIfSupported<>()
+//   0x74285f3: testing::Test::Run()
+//   0x74291ba: testing::TestInfo::Run()
+// ... Google Test internal frames ...
+
+// DURING SECOND REQUEST aggregate_cluster cx_pool_open: 0
+// DURING SECOND REQUEST aggregate_cluster remaining_cx_pools: 1
+// DURING SECOND REQUEST aggregate_cluster upstream_cx_pool_overflow: 0
+// DURING SECOND REQUEST aggregate_cluster upstream_cx_active: 0
+// DURING SECOND REQUEST aggregate_cluster upstream_cx_total: 0
+// DURING SECOND REQUEST aggregate_cluster upstream_cx_http1_total: 0
+// DURING SECOND REQUEST aggregate_cluster upstream_cx_http2_total: 0
+// DURING SECOND REQUEST aggregate_cluster upstream_rq_active: 0
+// DURING SECOND REQUEST aggregate_cluster upstream_rq_total: 0
+// DURING SECOND REQUEST aggregate_cluster upstream_rq_active: 0
+// DURING SECOND REQUEST aggregate_cluster upstream_rq_total: 0
+// DURING SECOND REQUEST cluster_1 cx_pool_open: 1
+// DURING SECOND REQUEST cluster_1 remaining_cx_pools: 0
+// DURING SECOND REQUEST cluster_1 upstream_cx_pool_overflow: 0
+// DURING SECOND REQUEST cluster_1 upstream_cx_active: 1
+// DURING SECOND REQUEST cluster_1 upstream_cx_total: 1
+// DURING SECOND REQUEST cluster_1 upstream_cx_http1_total: 0
+// DURING SECOND REQUEST cluster_1 upstream_cx_http2_total: 1
+// DURING SECOND REQUEST cluster_1 upstream_rq_active: 1
+// DURING SECOND REQUEST cluster_1 upstream_rq_total: 1
 // ---------- WAIT FOR cluster.cluster_1.upstream_cx_pool_overflow = 1
 // ./test/integration/server.h:452: Failure
 // Value of: TestUtility::waitForCounterEq(statStore(), name, value, time_system_, timeout, dispatcher)
 //   Actual: false (timed out waiting for cluster.cluster_1.upstream_cx_pool_overflow to be 1, current value 0)
 // Expected: true
 // Stack trace:
-//   0x355ab61: Envoy::IntegrationTestServer::waitForCounterEq()
-//   0x2b8248d: Envoy::(anonymous namespace)::AggregateIntegrationTest_CircuitBreakerTestMaxConnectionPools_Test::TestBody()
-//   0x744f48b: testing::internal::HandleSehExceptionsInMethodIfSupported<>()
-//   0x743f03d: testing::internal::HandleExceptionsInMethodIfSupported<>()
-//   0x74278b3: testing::Test::Run()
-//   0x742847a: testing::TestInfo::Run()
+//   0x355b8b1: Envoy::IntegrationTestServer::waitForCounterEq()
+//   0x2b8273d: Envoy::(anonymous namespace)::AggregateIntegrationTest_CircuitBreakerTestMaxConnectionPools_Test::TestBody()
+//   0x74501cb: testing::internal::HandleSehExceptionsInMethodIfSupported<>()
+//   0x743fd7d: testing::internal::HandleExceptionsInMethodIfSupported<>()
+//   0x74285f3: testing::Test::Run()
+//   0x74291ba: testing::TestInfo::Run()
 // ... Google Test internal frames ...
 
-// ---------- CHECKING STATS AFTER SECOND CONNECTION POOL ATTEMPT
-// DURING SECOND REQUEST aggregate_cluster cx_pool_open: 0
-// DURING SECOND REQUEST aggregate_cluster remaining_cx_pools: 1
-// DURING SECOND REQUEST aggregate_cluster upstream_cx_pool_overflow: 0
-// DURING SECOND REQUEST aggregate_cluster upstream_cx_active: 0
-// DURING SECOND REQUEST aggregate_cluster upstream_cx_total: 0
-// DURING SECOND REQUEST aggregate_cluster upstream_rq_active: 0
-// DURING SECOND REQUEST aggregate_cluster upstream_rq_total: 0
-// DURING SECOND REQUEST cluster_1 cx_pool_open: 1
-// DURING SECOND REQUEST cluster_1 remaining_cx_pools: 0
-// DURING SECOND REQUEST cluster_1 upstream_cx_pool_overflow: 0
-// DURING SECOND REQUEST cluster_1 upstream_cx_active: 2
-// DURING SECOND REQUEST cluster_1 upstream_cx_total: 2
-// DURING SECOND REQUEST cluster_1 upstream_rq_active: 2
-// DURING SECOND REQUEST cluster_1 upstream_rq_total: 2
 // ---------- 99 TEST END
+
+
+// TEMPORARY SNIPPETS:
+
+// std::cout << "---------- SEND SECOND REQUEST" << std::endl;
+// auto aggregate_cluster_response2 = ->makeHeaderOnlyRequest(
+//   Http::TestRequestHeaderMapImpl{{":method", "GET"}, {":path", "/aggregatecluster"},{":scheme", "http"}, {":authority", "host"}}
+// );
+
+// std::cout << "---------- WAIT FOR SECOND REQUEST TO REACH UPSTREAM" << std::endl;
+// waitForNextUpstreamRequest(FirstUpstreamIndex);
+
+// std::cout << "---------- HANDLE RESPONSE 2 ON DOWNSTREAM CLIENT" << std::endl;
+// ASSERT_TRUE(response2->waitForEndStream());
+// EXPECT_EQ("200", response2->headers().getStatusValue());
+
+// printStatsForMaxConnectionPools("AFTER SECOND REQUEST COMPLETES");
+
+// std::cout << "---------- RESPOND TO THE SECOND REQUEST WITH 200" << std::endl;
+// upstream_request_->encodeHeaders(default_response_headers_, true);
+
+// std::cout << "---------- HANDLE RESPONSE 2 ON DOWNSTREAM CLIENT" << std::endl;
+// ASSERT_TRUE(response2->waitForEndStream());
+// EXPECT_EQ("200", response2->headers().getStatusValue());
+
+// std::cout << "---------- WAIT FOR UPSTREAM CONNECTION TO BE CLOSED DUE TO max_requests_per_connection = 1" << std::endl;
+// ASSERT_TRUE(fake_upstream_connection_->waitForDisconnect());
+// fake_upstream_connection_.reset();
+
+// std::cout << "---------- WAIT FOR cluster.cluster_1.circuit_breakers.default.cx_pool_open = 0" << std::endl;
+
+// // verify that the connection pool is cleaned up after closing all connections
+// test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.cx_pool_open", 0);
+
+// std::cout << "---------- STATS AFTER CONNECTION CLOSE" << std::endl;
+// printStatsForMaxConnectionPools("AFTER");
+
+// std::cout << "---------- RESPOND TO THE FIRST REQUEST WITH 200" << std::endl;
+// upstream_request_->encodeHeaders(default_response_headers_, true);
+
+// std::cout << "---------- HANDLE RESPONSE 1 ON DOWNSTREAM CLIENT" << std::endl;
+// ASSERT_TRUE(response1->waitForEndStream());
+// EXPECT_EQ("200", response1->headers().getStatusValue());
+
+// printStatsForMaxConnectionPools("AFTER FIRST REQUEST COMPLETES");
+
+// std::cout << "---------- WAIT FOR UPSTREAM CONNECTION TO BE CLOSED DUE TO max_requests_per_connection = 1" << std::endl;
+// ASSERT_TRUE(fake_upstream_connection_->waitForDisconnect());
+// fake_upstream_connection_.reset();
