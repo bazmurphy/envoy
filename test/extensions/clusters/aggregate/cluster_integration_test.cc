@@ -189,64 +189,14 @@ public:
     xds_stream_->startGrpcStream();
   }
 
-  void aggregateClusterConfigModifier(const circuitBreakerThresholds& cbThresholds) {
-    config_helper_.addConfigModifier([cbThresholds](
-                                         envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
-      auto* static_resources = bootstrap.mutable_static_resources();
-      auto* aggregate_cluster = static_resources->mutable_clusters(1);
-
-      // we want to reduce the "aggregate_cluster" "clusters" list down to just "cluster_1" (and
-      // therefore remove "cluster_2") so we can control our tests because "aggregate_cluster" is in
-      // "static_resources" not in "dynamic_resources" this is a bit more fiddly
-
-      // get the "typed_config" of the "aggregate_cluster"
-      auto* aggregate_cluster_type = aggregate_cluster->mutable_cluster_type();
-      auto* aggregate_cluster_typed_config = aggregate_cluster_type->mutable_typed_config();
-
-      // make a new ClusterConfig to parse the "typed_config" into
-      envoy::extensions::clusters::aggregate::v3::ClusterConfig temp_aggregate_cluster_typed_config;
-
-      // unpack the typed_config into cluster_config
-      aggregate_cluster_typed_config->UnpackTo(&temp_aggregate_cluster_typed_config);
-
-      // clear the existing clusters list
-      temp_aggregate_cluster_typed_config.clear_clusters();
-
-      // add only "cluster_1" back to the clusters list
-      temp_aggregate_cluster_typed_config.add_clusters("cluster_1");
-
-      // re-pack the adjusted config back
-      aggregate_cluster_typed_config->PackFrom(temp_aggregate_cluster_typed_config);
-
-      // we want to set the circuit breaker configuration on the aggregate cluster
-      auto* aggregate_cluster_circuit_breakers = aggregate_cluster->mutable_circuit_breakers();
-
-      // set the aggregate_cluster circuit breakers
-      auto* aggregate_cluster_circuit_breakers_threshold_default =
-          aggregate_cluster_circuit_breakers->add_thresholds();
-      aggregate_cluster_circuit_breakers_threshold_default->set_priority(
-          envoy::config::core::v3::RoutingPriority::DEFAULT);
-      aggregate_cluster_circuit_breakers_threshold_default->mutable_max_connections()->set_value(
-          cbThresholds.max_connections);
-      aggregate_cluster_circuit_breakers_threshold_default->mutable_max_pending_requests()
-          ->set_value(cbThresholds.max_pending_requests);
-      aggregate_cluster_circuit_breakers_threshold_default->mutable_max_requests()->set_value(
-          cbThresholds.max_requests);
-      aggregate_cluster_circuit_breakers_threshold_default->mutable_max_retries()->set_value(
-          cbThresholds.max_retries);
-      aggregate_cluster_circuit_breakers_threshold_default->mutable_max_connection_pools()
-          ->set_value(cbThresholds.max_connection_pools);
-      aggregate_cluster_circuit_breakers_threshold_default->set_track_remaining(true);
-    });
-  }
-
-  void childClusterConfigModifier(envoy::config::cluster::v3::Cluster& cluster,
+  void addCircuitBreakerThreshold(envoy::config::cluster::v3::Cluster& cluster,
                                   const circuitBreakerThresholds& cbThresholds) {
     auto* cluster_circuit_breakers = cluster.mutable_circuit_breakers();
 
     auto* cluster_circuit_breakers_threshold_default = cluster_circuit_breakers->add_thresholds();
     cluster_circuit_breakers_threshold_default->set_priority(
         envoy::config::core::v3::RoutingPriority::DEFAULT);
+
     cluster_circuit_breakers_threshold_default->mutable_max_connections()->set_value(
         cbThresholds.max_connections);
     cluster_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(
@@ -257,7 +207,31 @@ public:
         cbThresholds.max_retries);
     cluster_circuit_breakers_threshold_default->mutable_max_connection_pools()->set_value(
         cbThresholds.max_connection_pools);
+
     cluster_circuit_breakers_threshold_default->set_track_remaining(true);
+  }
+
+  void aggregateClusterConfigModifier(const circuitBreakerThresholds& cbThresholds) {
+    config_helper_.addConfigModifier([this, cbThresholds](
+                                         envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
+      auto* static_resources = bootstrap.mutable_static_resources();
+      auto* aggregate_cluster = static_resources->mutable_clusters(1);
+
+      // create new aggregate cluster config where aggregate cluster have only cluster_1 as child
+      // cluster
+      auto* aggregate_cluster_type = aggregate_cluster->mutable_cluster_type();
+      auto* aggregate_cluster_typed_config = aggregate_cluster_type->mutable_typed_config();
+
+      envoy::extensions::clusters::aggregate::v3::ClusterConfig temp_aggregate_cluster_typed_config;
+
+      aggregate_cluster_typed_config->UnpackTo(&temp_aggregate_cluster_typed_config);
+      temp_aggregate_cluster_typed_config.clear_clusters();
+      temp_aggregate_cluster_typed_config.add_clusters("cluster_1");
+      aggregate_cluster_typed_config->PackFrom(temp_aggregate_cluster_typed_config);
+
+      // set the aggregate_cluster circuit breakers limits
+      this->addCircuitBreakerThreshold(*aggregate_cluster, cbThresholds);
+    });
   }
 
   const bool deferred_cluster_creation_;
@@ -393,13 +367,14 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRequests) {
 
   circuitBreakerThresholds circuitBreakerThresholds{.max_requests = 1};
 
+  // add circuit breaker limits to aggregate_cluster
   aggregateClusterConfigModifier(circuitBreakerThresholds);
 
   // now call initialize (and that will add cluster_1 to the "dynamic_resources" > "clusters")
   initialize();
 
   // add circuit breaker limits to cluster_1
-  childClusterConfigModifier(cluster1_, circuitBreakerThresholds);
+  addCircuitBreakerThreshold(cluster1_, circuitBreakerThresholds);
 
   // !!! we need to send the updated cluster1_ to envoy via xds so we the "remaining" stats become
   // available (because they are not initialized by default during cluster creation)
