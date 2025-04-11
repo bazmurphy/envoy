@@ -1,8 +1,11 @@
 #include "envoy/config/cluster/v3/cluster.pb.h"
+#include "envoy/extensions/clusters/aggregate/v3/cluster.pb.h"
+#include "envoy/extensions/upstreams/http/v3/http_protocol_options.pb.h"
 #include "envoy/grpc/status.h"
 #include "envoy/stats/scope.h"
 
 #include "source/common/config/protobuf_link_hacks.h"
+#include "source/common/network/socket_option_factory.h"
 #include "source/common/protobuf/protobuf.h"
 #include "source/common/protobuf/utility.h"
 
@@ -28,6 +31,14 @@ const char SecondClusterName[] = "cluster_2";
 // Index in fake_upstreams_
 const int FirstUpstreamIndex = 2;
 const int SecondUpstreamIndex = 3;
+
+struct circuitBreakerThresholds {
+  uint32_t max_connections = 1024;
+  uint32_t max_requests = 1024;
+  uint32_t max_pending_requests = 1024;
+  uint32_t max_retries = 3;
+  uint32_t max_connection_pools = std::numeric_limits<uint32_t>::max();
+};
 
 const std::string& config() {
   CONSTRUCT_ON_FIRST_USE(std::string, fmt::format(R"EOF(
@@ -178,6 +189,69 @@ public:
     xds_stream_->startGrpcStream();
   }
 
+  void clusterThresholdsModifier(envoy::config::cluster::v3::Cluster& cluster,
+                                 const circuitBreakerThresholds& cbThresholds,
+                                 bool modify_http_protocol = false) {
+    auto* cluster_circuit_breakers = cluster.mutable_circuit_breakers();
+
+    auto* cluster_circuit_breakers_threshold_default = cluster_circuit_breakers->add_thresholds();
+    cluster_circuit_breakers_threshold_default->set_priority(
+        envoy::config::core::v3::RoutingPriority::DEFAULT);
+
+    cluster_circuit_breakers_threshold_default->mutable_max_connections()->set_value(
+        cbThresholds.max_connections);
+    cluster_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(
+        cbThresholds.max_pending_requests);
+    cluster_circuit_breakers_threshold_default->mutable_max_requests()->set_value(
+        cbThresholds.max_requests);
+    cluster_circuit_breakers_threshold_default->mutable_max_retries()->set_value(
+        cbThresholds.max_retries);
+    cluster_circuit_breakers_threshold_default->mutable_max_connection_pools()->set_value(
+        cbThresholds.max_connection_pools);
+
+    cluster_circuit_breakers_threshold_default->set_track_remaining(true);
+
+    if (modify_http_protocol) {
+      envoy::extensions::upstreams::http::v3::HttpProtocolOptions http_protocol_options;
+      // set the max_concurrent_streams to 1
+      http_protocol_options.mutable_explicit_http_config()
+          ->mutable_http2_protocol_options()
+          ->mutable_max_concurrent_streams()
+          ->set_value(1);
+      (*cluster.mutable_typed_extension_protocol_options())
+          ["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]
+              .PackFrom(http_protocol_options);
+    };
+  }
+
+  void aggregateClusterConfigModifier(const circuitBreakerThresholds& circuit_breaker_thresholds,
+                                      bool create_new_config = true,
+                                      bool modify_http_protocol = false) {
+    config_helper_.addConfigModifier(
+        [this, circuit_breaker_thresholds, create_new_config,
+         modify_http_protocol](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
+          auto* static_resources = bootstrap.mutable_static_resources();
+          auto* aggregate_cluster = static_resources->mutable_clusters(1);
+
+          if (create_new_config) {
+            // create new aggregate cluster config where aggregate cluster have only cluster_1 as
+            // child cluster
+            auto* aggregate_cluster_type = aggregate_cluster->mutable_cluster_type();
+            auto* aggregate_cluster_typed_config = aggregate_cluster_type->mutable_typed_config();
+            envoy::extensions::clusters::aggregate::v3::ClusterConfig
+                temp_aggregate_cluster_typed_config;
+            aggregate_cluster_typed_config->UnpackTo(&temp_aggregate_cluster_typed_config);
+            temp_aggregate_cluster_typed_config.clear_clusters();
+            temp_aggregate_cluster_typed_config.add_clusters("cluster_1");
+            aggregate_cluster_typed_config->PackFrom(temp_aggregate_cluster_typed_config);
+          }
+
+          // set the aggregate_cluster circuit breakers limits
+          this->clusterThresholdsModifier(*aggregate_cluster, circuit_breaker_thresholds,
+                                          modify_http_protocol);
+        });
+  }
+
   const bool deferred_cluster_creation_;
   envoy::config::cluster::v3::Cluster cluster1_;
   envoy::config::cluster::v3::Cluster cluster2_;
@@ -300,6 +374,485 @@ TEST_P(AggregateIntegrationTest, PreviousPrioritiesRetryPredicate) {
 
   EXPECT_TRUE(response->complete());
   EXPECT_EQ("200", response->headers().getStatusValue());
+  cleanupUpstreamAndDownstream();
+}
+
+TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnections) {
+  circuitBreakerThresholds circuitBreakerThresholds{.max_connections = 1};
+
+  // make the downstream client use http2
+  setDownstreamProtocol(Http::CodecType::HTTP2);
+
+  aggregateClusterConfigModifier(circuitBreakerThresholds, true, true);
+
+  initialize();
+
+  // add circuit breaker limits to cluster_1
+  clusterThresholdsModifier(cluster1_, circuitBreakerThresholds, true);
+
+  EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "55", {}, {}, {}));
+
+  sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster,
+                                                             {cluster1_}, {cluster1_}, {}, "56");
+
+  // make sure we still have 3 active clusters
+  test_server_->waitForGaugeEq("cluster_manager.active_clusters", 3);
+
+  // initial check
+  // aggregate_cluster
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.cx_open", 0);
+  test_server_->waitForGaugeGe("cluster.aggregate_cluster.circuit_breakers.default.remaining_cx",
+                               1);
+  // cluster_1
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.cx_open", 0);
+  test_server_->waitForGaugeGe("cluster.cluster_1.circuit_breakers.default.remaining_cx", 1);
+
+  codec_client_ = makeHttpConnection(lookupPort("http"));
+
+  // send the first request (this should go via "aggregate_cluster" through to "cluster_1")
+  auto aggregate_cluster_response1 = codec_client_->makeHeaderOnlyRequest(
+      Http::TestRequestHeaderMapImpl{{":method", "GET"},
+                                     {":path", "/aggregatecluster"},
+                                     {":scheme", "http"},
+                                     {":authority", "host"}});
+
+  // !!! ^this counts as a single stream
+  // and we specified in the http2 protocol options on both clusters to allow
+  // max_concurrent_streams: 1 so now one request (stream) should use up 1 entire connection
+
+  // wait for the request to arrive at the upstream cluster
+  waitForNextUpstreamRequest(FirstUpstreamIndex);
+
+  // after creating a connection and sending a request to cluster_1 via aggregate cluster
+  // aggregate_cluster
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.cx_open", 0);
+  test_server_->waitForGaugeGe("cluster.aggregate_cluster.circuit_breakers.default.remaining_cx",
+                               1);
+  // cluster_1
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.cx_open", 1);
+  test_server_->waitForGaugeGe("cluster.cluster_1.circuit_breakers.default.remaining_cx", 0);
+
+  // send a 2nd request that will be rejected by the circuit_breaker
+  auto aggregate_cluster_response2 = codec_client_->makeHeaderOnlyRequest(
+      Http::TestRequestHeaderMapImpl{{":method", "GET"},
+                                     {":path", "/aggregatecluster"},
+                                     {":scheme", "http"},
+                                     {":authority", "host"},
+                                     {"x-envoy-retry-on", "connect-failure"},
+                                     {"x-envoy-max-retries", "0"}});
+
+  // check the upstream_cx_overflow counters
+  // we can't handle the request as the connection can not be created because of the circuit breaker
+  // limit , but since the upstream_cx_overflow counter is incremented for cluster_1 meaning that
+  // the connection is not created and the request is rejected
+  test_server_->waitForCounterGe("cluster.aggregate_cluster.upstream_cx_overflow", 0);
+  test_server_->waitForCounterGe("cluster.cluster_1.upstream_cx_overflow", 1);
+
+  // send a 3rd request directly to cluster_1
+  auto cluster1_response1 = codec_client_->makeHeaderOnlyRequest(Http::TestRequestHeaderMapImpl{
+      {":method", "GET"}, {":path", "/cluster1"}, {":scheme", "http"}, {":authority", "host"}});
+
+  test_server_->waitForCounterGe("cluster.aggregate_cluster.upstream_cx_overflow", 0);
+  test_server_->waitForCounterGe("cluster.cluster_1.upstream_cx_overflow", 2);
+
+  // respond with headers
+  upstream_request_->encodeHeaders(default_response_headers_, true);
+  ASSERT_TRUE(upstream_request_->waitForEndStream(*dispatcher_));
+  ASSERT_TRUE(aggregate_cluster_response1->waitForEndStream());
+  EXPECT_EQ("200", aggregate_cluster_response1->headers().getStatusValue());
+
+  // close the upstream connection (because it will be kept around for a while if we don't)
+  // so we can check the circuit breaker returns to its initial state
+  // Close the first connection
+  ASSERT_TRUE(fake_upstream_connection_->close());
+  ASSERT_TRUE(fake_upstream_connection_->waitForDisconnect());
+  fake_upstream_connection_.reset();
+
+  // after sending the response
+  // aggregate_cluster
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.cx_open", 0);
+  test_server_->waitForGaugeGe("cluster.aggregate_cluster.circuit_breakers.default.remaining_cx",
+                               1);
+  test_server_->waitForCounterGe("cluster.aggregate_cluster.upstream_cx_overflow", 0);
+
+  // cluster_1
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.cx_open", 0);
+  test_server_->waitForGaugeGe("cluster.cluster_1.circuit_breakers.default.remaining_cx", 1);
+  test_server_->waitForCounterGe("cluster.cluster_1.upstream_cx_overflow", 2);
+
+  cleanupUpstreamAndDownstream();
+}
+
+TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRequests) {
+  circuitBreakerThresholds circuitBreakerThresholds{.max_requests = 1};
+
+  // let's specifically use http2 on the downstream client
+  // so that we can use the single code_client_ to send many requests (and don't have to create
+  // multiple codec_clients_ if we were using http1.1)
+  setDownstreamProtocol(Http::CodecType::HTTP2);
+
+  // add circuit breaker limits to aggregate_cluster
+  aggregateClusterConfigModifier(circuitBreakerThresholds, true);
+
+  // now call initialize (and that will add cluster_1 to the "dynamic_resources" > "clusters")
+  initialize();
+
+  // add circuit breaker limits to cluster_1
+  clusterThresholdsModifier(cluster1_, circuitBreakerThresholds);
+
+  // !!! we need to send the updated cluster1_ to envoy via xds so we the "remaining" stats become
+  // available (because they are not initialized by default during cluster creation)
+  // do we need this expectation ?
+  EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "55", {}, {}, {}));
+
+  sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster,
+                                                             {cluster1_}, {cluster1_}, {}, "56");
+
+  // make sure we still only have 3 clusters: "my_cds_cluster" [0], "aggregate_cluster" [1],
+  // "cluster_1" [2]
+  test_server_->waitForGaugeEq("cluster_manager.active_clusters", 3);
+
+  // check the initial circuit breaker stats
+  // aggregate_cluster
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_open", 0);
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_rq",
+                               1);
+
+  // cluster_1
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_open", 0);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_rq", 1);
+
+  // now we want to make the requests to check the circuit breakers behaviour...
+  // creates http connection from downstream to envoy
+  codec_client_ = makeHttpConnection(lookupPort("http"));
+
+  // send the first request (this should go via "aggregate_cluster" through to "cluster_1")
+  auto aggregate_cluster_response1 = codec_client_->makeHeaderOnlyRequest(
+      Http::TestRequestHeaderMapImpl{{":method", "GET"},
+                                     {":path", "/aggregatecluster"},
+                                     {":scheme", "http"},
+                                     {":authority", "host"}});
+
+  // tell the upstream cluster (index 2) (which is cluster_1) to wait for the request to arrive
+  // creates connection from envoy to upstream and send request to cluster_1
+  waitForNextUpstreamRequest(FirstUpstreamIndex);
+
+  // check the circuit breaker stats after sending request
+  // aggregate_cluster
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_open", 0);
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_rq",
+                               1);
+
+  // cluster_1
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_open", 1);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_rq", 0);
+
+  // sending a second request to /aggregatecluster before the first request is completed
+  auto aggregate_cluster_response2 = codec_client_->makeHeaderOnlyRequest(
+      Http::TestRequestHeaderMapImpl{{":method", "GET"},
+                                     {":path", "/aggregatecluster"},
+                                     {":scheme", "http"},
+                                     {":authority", "host"}});
+
+  ASSERT_TRUE(aggregate_cluster_response2->waitForEndStream());
+
+  // check the status of the response2 is 503 (because the circuit breaker is triggered and so the
+  // request to /aggregatecluster was rejected)
+  EXPECT_EQ("503", aggregate_cluster_response2->headers().getStatusValue());
+
+  // check the upstream_rq_pending_overflow counters
+  test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_pending_overflow", 0);
+  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_pending_overflow", 1);
+
+  // sending a request  directly to /cluster1 while circuit breaker is tripped
+  auto cluster1_response1 = codec_client_->makeHeaderOnlyRequest(Http::TestRequestHeaderMapImpl{
+      {":method", "GET"}, {":path", "/cluster1"}, {":scheme", "http"}, {":authority", "host"}});
+
+  // wait for cluster1 response to complete and return to the client
+  ASSERT_TRUE(cluster1_response1->waitForEndStream());
+
+  // check the status of the response is 503 (because the circuit breaker is triggered and so the
+  // request to /cluster1 was rejected)
+  EXPECT_EQ("503", cluster1_response1->headers().getStatusValue());
+
+  // check the upstream_rq_pending_overflow counters
+  test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_pending_overflow", 0);
+  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_pending_overflow", 2);
+
+  // send response back to complete the first request
+  upstream_request_->encodeHeaders(default_response_headers_, true);
+
+  ASSERT_TRUE(upstream_request_->waitForEndStream(*dispatcher_));
+
+  ASSERT_TRUE(aggregate_cluster_response1->waitForEndStream());
+
+  EXPECT_EQ("200", aggregate_cluster_response1->headers().getStatusValue());
+
+  // now check the circuit breaker stats again after receiving the response back
+  // aggregate_cluster
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_open", 0);
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_rq",
+                               1);
+  test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_pending_overflow", 0);
+
+  // cluster_1
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_open", 0);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_rq", 1);
+  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_pending_overflow",
+                                 2); // it's a counter it doesn't go back to 0 unless we reset it
+
+  cleanupUpstreamAndDownstream();
+}
+
+TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRequestsTwoClusters) {
+  circuitBreakerThresholds circuitBreakerThresholds{.max_requests = 1};
+  setDownstreamProtocol(Http::CodecType::HTTP2);
+
+  aggregateClusterConfigModifier(circuitBreakerThresholds, false, false);
+
+  initialize();
+
+  clusterThresholdsModifier(cluster1_, circuitBreakerThresholds);
+  clusterThresholdsModifier(cluster2_, circuitBreakerThresholds);
+
+  EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "55", {}, {}, {}));
+
+  sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(
+      Config::TypeUrl::get().Cluster, {cluster1_, cluster2_}, {cluster1_, cluster2_}, {}, "42");
+
+  test_server_->waitForGaugeEq("cluster_manager.active_clusters", 4);
+
+  // check the initial circuit breaker stats
+  // aggregate_cluster
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_open", 0);
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_rq",
+                               1);
+
+  // cluster_1
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_open", 0);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_rq", 1);
+
+  // cluster_2
+  test_server_->waitForGaugeEq("cluster.cluster_2.circuit_breakers.default.rq_open", 0);
+  test_server_->waitForGaugeEq("cluster.cluster_2.circuit_breakers.default.remaining_rq", 1);
+
+  codec_client_ = makeHttpConnection(lookupPort("http"));
+
+  // send the first request (this should go via "aggregate_cluster" through to "cluster_1")
+  auto aggregate_cluster_response1 = codec_client_->makeHeaderOnlyRequest(
+      Http::TestRequestHeaderMapImpl{{":method", "GET"},
+                                     {":path", "/aggregatecluster"},
+                                     {":scheme", "http"},
+                                     {":authority", "host"}});
+
+  // creates connection from envoy to upstream and send request to cluster_1
+  waitForNextUpstreamRequest(FirstUpstreamIndex);
+
+  // check the circuit breaker stats after sending request
+  // aggregate_cluster
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_open", 0);
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_rq",
+                               1);
+
+  // cluster_1
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_open", 1);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_rq", 0);
+
+  // cluster_2
+  test_server_->waitForGaugeEq("cluster.cluster_2.circuit_breakers.default.rq_open", 0);
+  test_server_->waitForGaugeEq("cluster.cluster_2.circuit_breakers.default.remaining_rq", 1);
+
+  // sending a second request to /aggregatecluster before the first request is completed
+  auto aggregate_cluster_response2 = codec_client_->makeHeaderOnlyRequest(
+      Http::TestRequestHeaderMapImpl{{":method", "GET"},
+                                     {":path", "/aggregatecluster"},
+                                     {":scheme", "http"},
+                                     {":authority", "host"}});
+
+  ASSERT_TRUE(aggregate_cluster_response2->waitForEndStream());
+
+  // check the status of the response2 is 503 (because the circuit breaker is triggered and so the
+  // request to /aggregatecluster was rejected)
+  EXPECT_EQ("503", aggregate_cluster_response2->headers().getStatusValue());
+
+  // check the upstream_rq_pending_overflow counters
+  test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_pending_overflow", 0);
+  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_pending_overflow", 1);
+  test_server_->waitForCounterEq("cluster.cluster_2.upstream_rq_pending_overflow", 0);
+
+  // sending a request  directly to /cluster2 while circuit breaker is tripped
+  auto cluster2_response1 = codec_client_->makeHeaderOnlyRequest(Http::TestRequestHeaderMapImpl{
+      {":method", "GET"}, {":path", "/cluster2"}, {":scheme", "http"}, {":authority", "host"}});
+
+  // Save a request and connection to the first request so we create a new connection and stream for
+  // cluster_2
+  FakeStreamPtr saved_upstream_request = std::move(upstream_request_);
+  FakeHttpConnectionPtr saved_upstream_connection = std::move(fake_upstream_connection_);
+
+  // Wait for request to reach cluster_2
+  waitForNextUpstreamRequest(SecondUpstreamIndex);
+
+  // check the circuit breaker stats after sending 2nd request
+  // aggregate_cluster
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_open", 0);
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_rq",
+                               1);
+
+  // cluster_1
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_open", 1);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_rq", 0);
+
+  // cluster_2
+  test_server_->waitForGaugeEq("cluster.cluster_2.circuit_breakers.default.rq_open", 1);
+  test_server_->waitForGaugeEq("cluster.cluster_2.circuit_breakers.default.remaining_rq", 0);
+
+  // Send response from cluster_2
+  upstream_request_->encodeHeaders(default_response_headers_, true);
+  ASSERT_TRUE(cluster2_response1->waitForEndStream());
+  EXPECT_EQ("200", cluster2_response1->headers().getStatusValue());
+
+  // Send response from cluster_1 (first request)
+  saved_upstream_request->encodeHeaders(default_response_headers_, true);
+  ASSERT_TRUE(aggregate_cluster_response1->waitForEndStream());
+  EXPECT_EQ("200", aggregate_cluster_response1->headers().getStatusValue());
+
+  // now check the circuit breaker stats again after receiving the response back
+  // aggregate_cluster
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_open", 0);
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_rq",
+                               1);
+  test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_pending_overflow", 0);
+
+  // cluster_1
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_open", 0);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_rq", 1);
+  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_pending_overflow", 1);
+
+  // cluster_2
+  test_server_->waitForGaugeEq("cluster.cluster_2.circuit_breakers.default.rq_open", 0);
+  test_server_->waitForGaugeEq("cluster.cluster_2.circuit_breakers.default.remaining_rq", 1);
+  test_server_->waitForCounterEq("cluster.cluster_2.upstream_rq_pending_overflow", 0);
+
+  cleanupUpstreamAndDownstream();
+}
+
+TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
+  circuitBreakerThresholds circuitBreakerThresholds{.max_connections = 1,
+                                                    .max_pending_requests = 1};
+
+  setDownstreamProtocol(Http::CodecType::HTTP2);
+
+  aggregateClusterConfigModifier(circuitBreakerThresholds, true, true);
+
+  initialize();
+
+  clusterThresholdsModifier(cluster1_, circuitBreakerThresholds, true);
+
+  EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "55", {}, {}, {}));
+
+  sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster,
+                                                             {cluster1_}, {cluster1_}, {}, "56");
+
+  test_server_->waitForGaugeEq("cluster_manager.active_clusters", 3);
+
+  // check the initial circuit breaker stats
+  // aggregate_cluster
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open",
+                               0);
+  test_server_->waitForGaugeGe(
+      "cluster.aggregate_cluster.circuit_breakers.default.remaining_pending", 1);
+
+  // cluster_1
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 0);
+  test_server_->waitForGaugeGe("cluster.cluster_1.circuit_breakers.default.remaining_pending", 1);
+
+  codec_client_ = makeHttpConnection(lookupPort("http"));
+
+  // make the first request
+  // the connection should now be "saturated" since it will only allow 1 concurrent stream
+  // now subsequent requests should go into a "pending" state
+  auto aggregate_cluster_response1 = codec_client_->makeHeaderOnlyRequest(
+      Http::TestRequestHeaderMapImpl{{":method", "GET"},
+                                     {":path", "/aggregatecluster"},
+                                     {":scheme", "http"},
+                                     {":authority", "host"}});
+
+  // wait for the first request to arrive at cluster_1
+  waitForNextUpstreamRequest(FirstUpstreamIndex);
+
+  // make the second request, this will be the first "pending" request
+  auto aggregate_cluster_response2 = codec_client_->makeHeaderOnlyRequest(
+      Http::TestRequestHeaderMapImpl{{":method", "GET"},
+                                     {":path", "/aggregatecluster"},
+                                     {":scheme", "http"},
+                                     {":authority", "host"}});
+
+  // check the circuit breaker stats after sending a pending request
+  // aggregate_cluster
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open",
+                               0);
+  test_server_->waitForGaugeGe(
+      "cluster.aggregate_cluster.circuit_breakers.default.remaining_pending", 1);
+  // cluster_1
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open",
+                               1); // !! the circuit breaker should now be triggered
+  test_server_->waitForGaugeGe("cluster.cluster_1.circuit_breakers.default.remaining_pending", 0);
+
+  // make the third request, this will be the second "pending" request
+  auto aggregate_cluster_response3 = codec_client_->makeHeaderOnlyRequest(
+      Http::TestRequestHeaderMapImpl{{":method", "GET"},
+                                     {":path", "/aggregatecluster"},
+                                     {":scheme", "http"},
+                                     {":authority", "host"}});
+
+  // the third request should fail immediately with 503
+  // because the max_pending_requests circuit breaker is triggered
+  ASSERT_TRUE(aggregate_cluster_response3->waitForEndStream());
+  EXPECT_EQ("503", aggregate_cluster_response3->headers().getStatusValue());
+
+  // check the upstream_rq_pending_overflow counters
+  test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_pending_overflow", 0);
+  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_pending_overflow", 1);
+
+  // sending a request  directly to /cluster1 while circuit breaker is tripped
+  auto cluster1_response1 = codec_client_->makeHeaderOnlyRequest(Http::TestRequestHeaderMapImpl{
+      {":method", "GET"}, {":path", "/cluster1"}, {":scheme", "http"}, {":authority", "host"}});
+
+  // the request should fail immediately with 503
+  // because the max_pending_requests circuit breaker is triggered
+  ASSERT_TRUE(cluster1_response1->waitForEndStream());
+  EXPECT_EQ("503", cluster1_response1->headers().getStatusValue());
+
+  // check the upstream_rq_pending_overflow counters
+  test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_pending_overflow", 0);
+  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_pending_overflow", 2);
+
+  // complete the first request/response
+  upstream_request_->encodeHeaders(default_response_headers_, true);
+  ASSERT_TRUE(aggregate_cluster_response1->waitForEndStream());
+  EXPECT_EQ("200", aggregate_cluster_response1->headers().getStatusValue());
+
+  // wait for the second request to reach cluster_1
+  waitForNextUpstreamRequest(FirstUpstreamIndex);
+
+  // complete the second request/response
+  upstream_request_->encodeHeaders(default_response_headers_, true);
+  ASSERT_TRUE(aggregate_cluster_response2->waitForEndStream());
+  EXPECT_EQ("200", aggregate_cluster_response2->headers().getStatusValue());
+
+  // now check the circuit breaker stats again after receiving all the responses back
+  // aggregate_cluster
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open",
+                               0);
+  test_server_->waitForGaugeGe(
+      "cluster.aggregate_cluster.circuit_breakers.default.remaining_pending", 1);
+  test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_pending_overflow", 0);
+
+  // cluster_1
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 0);
+  test_server_->waitForGaugeGe("cluster.cluster_1.circuit_breakers.default.remaining_pending", 1);
+  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_pending_overflow", 2);
+
   cleanupUpstreamAndDownstream();
 }
 
