@@ -189,7 +189,7 @@ public:
     xds_stream_->startGrpcStream();
   }
 
-  void addCircuitBreakerThreshold(envoy::config::cluster::v3::Cluster& cluster,
+  void childClusterConfigModifier(envoy::config::cluster::v3::Cluster& cluster,
                                   const circuitBreakerThresholds& cbThresholds,
                                   bool modify_http_protocol = false) {
     auto* cluster_circuit_breakers = cluster.mutable_circuit_breakers();
@@ -244,7 +244,7 @@ public:
       aggregate_cluster_typed_config->PackFrom(temp_aggregate_cluster_typed_config);
 
       // set the aggregate_cluster circuit breakers limits
-      this->addCircuitBreakerThreshold(*aggregate_cluster, circuit_breaker_thresholds,
+      this->childClusterConfigModifier(*aggregate_cluster, circuit_breaker_thresholds,
                                        modify_http_protocol);
     });
   }
@@ -389,7 +389,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRequests) {
   initialize();
 
   // add circuit breaker limits to cluster_1
-  addCircuitBreakerThreshold(cluster1_, circuitBreakerThresholds);
+  childClusterConfigModifier(cluster1_, circuitBreakerThresholds);
 
   // !!! we need to send the updated cluster1_ to envoy via xds so we the "remaining" stats become
   // available (because they are not initialized by default during cluster creation)
@@ -505,7 +505,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
 
   initialize();
 
-  addCircuitBreakerThreshold(cluster1_, circuitBreakerThresholds, true);
+  childClusterConfigModifier(cluster1_, circuitBreakerThresholds, true);
 
   EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "55", {}, {}, {}));
 
@@ -573,6 +573,19 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
   test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_pending_overflow", 0);
   test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_pending_overflow", 1);
 
+  // sending a request  directly to /cluster1 while circuit breaker is tripped
+  auto cluster1_response1 = codec_client_->makeHeaderOnlyRequest(Http::TestRequestHeaderMapImpl{
+      {":method", "GET"}, {":path", "/cluster1"}, {":scheme", "http"}, {":authority", "host"}});
+
+  // the request should fail immediately with 503
+  // because the max_pending_requests circuit breaker is triggered
+  ASSERT_TRUE(cluster1_response1->waitForEndStream());
+  EXPECT_EQ("503", cluster1_response1->headers().getStatusValue());
+
+  // check the upstream_rq_pending_overflow counters
+  test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_pending_overflow", 0);
+  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_pending_overflow", 2);
+
   // complete the first request/response
   upstream_request_->encodeHeaders(default_response_headers_, true);
   ASSERT_TRUE(aggregate_cluster_response1->waitForEndStream());
@@ -597,7 +610,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
   // cluster_1
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_pending_open", 0);
   test_server_->waitForGaugeGe("cluster.cluster_1.circuit_breakers.default.remaining_pending", 1);
-  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_pending_overflow", 1);
+  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_pending_overflow", 2);
 
   cleanupUpstreamAndDownstream();
 }
