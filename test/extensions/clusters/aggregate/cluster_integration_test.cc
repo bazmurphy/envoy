@@ -188,6 +188,9 @@ public:
     std::cout << prefix << " aggregate_cluster cx_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.cx_open")->value() << std::endl;
     std::cout << prefix << " aggregate_cluster remaining_cx: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_cx")->value() << std::endl;
     std::cout << prefix << " aggregate_cluster upstream_cx_overflow: " << test_server_->counter("cluster.aggregate_cluster.upstream_cx_overflow")->value() << std::endl;
+    // std::cout << prefix << " aggregate_cluster rq_pending_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_pending_open")->value() << std::endl;
+    // std::cout << prefix << " aggregate_cluster remaining_pending: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_pending")->value() << std::endl;
+    // std::cout << prefix << " aggregate_cluster upstream_rq_pending_overflow: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_pending_overflow")->value() << std::endl;
     std::cout << prefix << " aggregate_cluster upstream_cx_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_cx_total")->value() << std::endl;
     std::cout << prefix << " aggregate_cluster upstream_cx_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_cx_active")->value() << std::endl;
     std::cout << prefix << " aggregate_cluster upstream_cx_http1_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_cx_http1_total")->value() << std::endl;
@@ -233,10 +236,12 @@ public:
     // std::cout << prefix << " aggregate_cluster upstream_rq_retry_limit_exceeded: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_limit_exceeded")->value() << std::endl;
     // std::cout << prefix << " aggregate_cluster upstream_rq_retry_success: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_success")->value() << std::endl;
     // std::cout << prefix << " aggregate_cluster upstream_rq_retry_overflow: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_overflow")->value() << std::endl;
-
     std::cout << prefix << " cluster_1 cx_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.cx_open")->value() << std::endl;
     std::cout << prefix << " cluster_1 remaining_cx: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_cx")->value() << std::endl;
     std::cout << prefix << " cluster_1 upstream_cx_overflow: " << test_server_->counter("cluster.cluster_1.upstream_cx_overflow")->value() << std::endl;
+    // std::cout << prefix << " cluster_1 rq_pending_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_pending_open")->value() << std::endl;
+    // std::cout << prefix << " cluster_1 remaining_pending: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_pending")->value() << std::endl;
+    // std::cout << prefix << " cluster_1 upstream_rq_pending_overflow: " << test_server_->counter("cluster.cluster_1.upstream_rq_pending_overflow")->value() << std::endl;
     std::cout << prefix << " cluster_1 upstream_cx_total: " << test_server_->counter("cluster.cluster_1.upstream_cx_total")->value() << std::endl;
     std::cout << prefix << " cluster_1 upstream_cx_active: " << test_server_->gauge("cluster.cluster_1.upstream_cx_active")->value() << std::endl;
     std::cout << prefix << " cluster_1 upstream_cx_http1_total: " << test_server_->counter("cluster.cluster_1.upstream_cx_http1_total")->value() << std::endl;
@@ -614,12 +619,22 @@ TEST_P(AggregateIntegrationTest, NEWCircuitBreakerMaxConnectionsTest) {
   
   std::cout << "---------- ^CHECKPOINT 05 : MAX CONNECTIONS CIRCUIT BREAKER TRIPPED -------------" << std::endl;
 
+  // (HACKY)
+  // UPDATE cluster1 via XDS to have max_pending_requests = 0   
+  // cluster1_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(0);
+  // EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "56", {}, {}, {}));
+  // sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster, {cluster1_}, {cluster1_}, {}, "57");
+  // test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_pending", 0);
+  // printStatsForMaxConnections("ADJUST CLUSTER1 max pending requests CIRCUIT BREAKER VIA XDS");
+
   // send a second request to /aggregatecluster
   // this should create a new upstream connection because 
   // we set max_requests_per_connection to 1 so each request should make a new connection
   auto aggregate_cluster_response2 = codec_client_->makeHeaderOnlyRequest(
     Http::TestRequestHeaderMapImpl{{":method", "GET"},{":path", "/aggregatecluster"},{":scheme", "http"},{":authority", "host"}}
   );
+
+  printStatsForMaxConnections("05->06");
 
   std::cout << "---------- ^CHECKPOINT 06 : SENT SECOND REQUEST (USING SAME CLIENT) -------------" << std::endl;
 
@@ -635,6 +650,8 @@ TEST_P(AggregateIntegrationTest, NEWCircuitBreakerMaxConnectionsTest) {
     Http::TestRequestHeaderMapImpl{{":method", "GET"},{":path", "/cluster1"},{":scheme", "http"},{":authority", "host"}}
   );
 
+  printStatsForMaxConnections("07->08");
+
   std::cout << "---------- ^CHECKPOINT 08 : SENT THIRD REQUEST (USING SAME CLIENT) -------------" << std::endl;
 
   test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_cx_overflow", 0); // unaffected
@@ -644,32 +661,40 @@ TEST_P(AggregateIntegrationTest, NEWCircuitBreakerMaxConnectionsTest) {
   
   std::cout << "---------- ^CHECKPOINT 09 : OVERFLOW INCREMENTED AGAIN -------------" << std::endl;
 
-  // cluster1 responds to the first request
-  upstream_request_->encodeHeaders(default_response_headers_, true);
-  ASSERT_TRUE(upstream_request_->waitForEndStream(*dispatcher_));
+  // IVE EDITED THIS, ORIGINALLY MADE IT SO WE PROCESSED THE FIRST REQUEST, ETC BUT THAT LEADS TO OTHER ISSUES..
+  // DONT EVEN BOTHER RESPONDING TO FIRST REQUEST BECAUSE IT JUST CAUSES THE PENDING REQUESTS TO START BEING PROCESSED...
 
-  printStatsForMaxConnections("09->10");
+  // cluster1 responds to the first request
+  // upstream_request_->encodeHeaders(default_response_headers_, true);
+  // ASSERT_TRUE(upstream_request_->waitForEndStream(*dispatcher_));
+
+  // printStatsForMaxConnections("09->10");
   
-  std::cout << "---------- ^CHECKPOINT 10 : UPSTREAM RESPONDED TO FIRST REQUEST -------------" << std::endl;
+  // std::cout << "---------- ^CHECKPOINT 10 : UPSTREAM RESPONDED TO FIRST REQUEST -------------" << std::endl;
 
   // the first request response arrives downstream
-  ASSERT_TRUE(aggregate_cluster_response1->waitForEndStream());
-  EXPECT_EQ("200", aggregate_cluster_response1->headers().getStatusValue());
+  // ASSERT_TRUE(aggregate_cluster_response1->waitForEndStream());
+  // EXPECT_EQ("200", aggregate_cluster_response1->headers().getStatusValue());
 
-  printStatsForMaxConnections("10->11");
+  // printStatsForMaxConnections("10->11");
   
-  std::cout << "---------- ^CHECKPOINT 11 : DOWNSTREAM RECEIVED RESPONSE  -------------" << std::endl;
+  // std::cout << "---------- ^CHECKPOINT 11 : DOWNSTREAM RECEIVED RESPONSE  -------------" << std::endl;
+  
+  // assert failure: result. Details: Timed out waiting for new stream.
+  // waitForNextUpstreamRequest(FirstUpstreamIndex);
 
-  // !!!
-  // I GUESS THIS IS WHERE THE PROBLEM LIES?
-  // THE CORRECT CLOSING OF ALL CURRENT CONNECTIONS...?
+  // its also related to pending requests that get queued if there is no connection available yet
 
   // close the upstream connection
   // so we can check the circuit breaker returns to its initial state
   ASSERT_TRUE(fake_upstream_connection_->close());
-  ASSERT_TRUE(fake_upstream_connection_->waitForDisconnect());
+  // ASSERT_TRUE(fake_upstream_connection_->waitForDisconnect());
 
-  printStatsForMaxConnections("11->12");
+  codec_client_->close();
+
+  // BUT WE STILL HAVE 3 REQUESTS JUST SITTING THERE PENDING IN ENVOY
+
+  printStatsForMaxConnections("10->12");
 
   std::cout << "---------- ^CHECKPOINT 12 : CLOSED UPSTREAM CONNECTION  -------------" << std::endl;
 
@@ -678,13 +703,66 @@ TEST_P(AggregateIntegrationTest, NEWCircuitBreakerMaxConnectionsTest) {
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.cx_open", 0);
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_cx", 1);
   test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_cx_overflow", 0);
+
+  // artificially increase the timeout to see if it gets back to 0 using std::chrono::milliseconds(20000) as the third parameter
+  // no, the timeout doesn't help...
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.cx_open", 0); // the cluster1 circuit breaker has returned to its initial state
+  // Value of: TestUtility::waitForGaugeEq(statStore(), name, value, time_system_, timeout)
+  // Actual: false (timed out waiting for cluster.cluster_1.circuit_breakers.default.cx_open to be 0, current value 1)
+  // Expected: true
+
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_cx", 1); // connections are allowed again
-  test_server_->waitForCounterGe("cluster.cluster_1.upstream_cx_overflow", 2); // greater than -_-
+  // Value of: TestUtility::waitForGaugeEq(statStore(), name, value, time_system_, timeout)
+  // Actual: false (timed out waiting for cluster.cluster_1.circuit_breakers.default.remaining_cx to be 1, current value 0)
+  // Expected: true
+
+  test_server_->waitForCounterEq("cluster.cluster_1.upstream_cx_overflow", 3); // THIS PASSES
 
   std::cout << "---------- ^CHECKPOINT 13 : CIRCUIT BREAKER RESET  -------------" << std::endl;
 
   printStatsForMaxConnections("BEFORE CLEANUP");
+  // BEFORE CLEANUP cluster_1 cx_open: 1
+  // BEFORE CLEANUP cluster_1 remaining_cx: 0
+  // BEFORE CLEANUP cluster_1 upstream_cx_overflow: 3
+  // BEFORE CLEANUP cluster_1 upstream_cx_total: 2
+  // BEFORE CLEANUP cluster_1 upstream_cx_active: 1
+  // BEFORE CLEANUP cluster_1 upstream_cx_http1_total: 0
+  // BEFORE CLEANUP cluster_1 upstream_cx_http2_total: 2
+  // BEFORE CLEANUP cluster_1 upstream_cx_http3_total: 0
+  // BEFORE CLEANUP cluster_1 upstream_cx_connect_fail: 0
+  // BEFORE CLEANUP cluster_1 upstream_cx_connect_timeout: 0
+  // BEFORE CLEANUP cluster_1 upstream_cx_connect_with_0_rtt: 0
+  // BEFORE CLEANUP cluster_1 upstream_cx_idle_timeout: 0
+  // BEFORE CLEANUP cluster_1 upstream_cx_max_duration_reached: 0
+  // BEFORE CLEANUP cluster_1 upstream_cx_connect_attempts_exceeded: 0
+  // BEFORE CLEANUP cluster_1 upstream_cx_destroy: 1
+  // BEFORE CLEANUP cluster_1 upstream_cx_destroy_local: 0
+  // BEFORE CLEANUP cluster_1 upstream_cx_destroy_remote: 1
+  // BEFORE CLEANUP cluster_1 upstream_cx_destroy_with_active_rq: 1
+  // BEFORE CLEANUP cluster_1 upstream_cx_destroy_local_with_active_rq: 0
+  // BEFORE CLEANUP cluster_1 upstream_cx_destroy_remote_with_active_rq: 1
+  // BEFORE CLEANUP cluster_1 upstream_cx_close_notify: 0
+  // BEFORE CLEANUP cluster_1 upstream_cx_rx_bytes_total: 55
+  // BEFORE CLEANUP cluster_1 upstream_cx_rx_bytes_buffered: 0
+  // BEFORE CLEANUP cluster_1 upstream_cx_tx_bytes_total: 201
+  // BEFORE CLEANUP cluster_1 upstream_cx_tx_bytes_buffered: 0
+  // BEFORE CLEANUP cluster_1 upstream_cx_pool_overflow: 0
+  // BEFORE CLEANUP cluster_1 upstream_cx_protocol_error: 0
+  // BEFORE CLEANUP cluster_1 upstream_cx_max_requests: 1
+  // BEFORE CLEANUP cluster_1 upstream_cx_none_healthy: 0
+  // BEFORE CLEANUP cluster_1 upstream_rq_total: 1
+  // BEFORE CLEANUP cluster_1 upstream_rq_active: 0
+  // BEFORE CLEANUP cluster_1 upstream_rq_pending_total: 3
+  // BEFORE CLEANUP cluster_1 upstream_rq_pending_overflow: 0
+  // BEFORE CLEANUP cluster_1 upstream_rq_pending_failure_eject: 1
+  // BEFORE CLEANUP cluster_1 upstream_rq_pending_active: 0
+  // BEFORE CLEANUP cluster_1 upstream_rq_cancelled: 2
+  // BEFORE CLEANUP cluster_1 upstream_rq_maintenance_mode: 0
+  // BEFORE CLEANUP cluster_1 upstream_rq_timeout: 0
+  // BEFORE CLEANUP cluster_1 upstream_rq_max_duration_reached: 0
+  // BEFORE CLEANUP cluster_1 upstream_rq_per_try_timeout: 0
+  // BEFORE CLEANUP cluster_1 upstream_rq_rx_reset: 0
+  // BEFORE CLEANUP cluster_1 upstream_rq_tx_reset: 0
 
   cleanupUpstreamAndDownstream();
 
@@ -693,873 +771,3 @@ TEST_P(AggregateIntegrationTest, NEWCircuitBreakerMaxConnectionsTest) {
 
 } // namespace
 } // namespace Envoy
-
-// [ RUN      ] IpVersions/AggregateIntegrationTest.NEWCircuitBreakerMaxConnectionsTest/3
-// ---------- 00 TEST START
-// ---------- ^CHECKPOINT 01 : SETUP COMPLETE -------------
-// 01->02 aggregate_cluster cx_open: 0
-// 01->02 aggregate_cluster remaining_cx: 1
-// 01->02 aggregate_cluster upstream_cx_overflow: 0
-// 01->02 aggregate_cluster upstream_cx_total: 0
-// 01->02 aggregate_cluster upstream_cx_active: 0
-// 01->02 aggregate_cluster upstream_cx_http1_total: 0
-// 01->02 aggregate_cluster upstream_cx_http2_total: 0
-// 01->02 aggregate_cluster upstream_cx_http3_total: 0
-// 01->02 aggregate_cluster upstream_cx_connect_fail: 0
-// 01->02 aggregate_cluster upstream_cx_connect_timeout: 0
-// 01->02 aggregate_cluster upstream_cx_connect_with_0_rtt: 0
-// 01->02 aggregate_cluster upstream_cx_idle_timeout: 0
-// 01->02 aggregate_cluster upstream_cx_max_duration_reached: 0
-// 01->02 aggregate_cluster upstream_cx_connect_attempts_exceeded: 0
-// 01->02 aggregate_cluster upstream_cx_destroy: 0
-// 01->02 aggregate_cluster upstream_cx_destroy_local: 0
-// 01->02 aggregate_cluster upstream_cx_destroy_remote: 0
-// 01->02 aggregate_cluster upstream_cx_destroy_with_active_rq: 0
-// 01->02 aggregate_cluster upstream_cx_destroy_local_with_active_rq: 0
-// 01->02 aggregate_cluster upstream_cx_destroy_remote_with_active_rq: 0
-// 01->02 aggregate_cluster upstream_cx_close_notify: 0
-// 01->02 aggregate_cluster upstream_cx_rx_bytes_total: 0
-// 01->02 aggregate_cluster upstream_cx_rx_bytes_buffered: 0
-// 01->02 aggregate_cluster upstream_cx_tx_bytes_total: 0
-// 01->02 aggregate_cluster upstream_cx_tx_bytes_buffered: 0
-// 01->02 aggregate_cluster upstream_cx_pool_overflow: 0
-// 01->02 aggregate_cluster upstream_cx_protocol_error: 0
-// 01->02 aggregate_cluster upstream_cx_max_requests: 0
-// 01->02 aggregate_cluster upstream_cx_none_healthy: 0
-// 01->02 aggregate_cluster upstream_rq_total: 0
-// 01->02 aggregate_cluster upstream_rq_active: 0
-// 01->02 aggregate_cluster upstream_rq_pending_total: 0
-// 01->02 aggregate_cluster upstream_rq_pending_overflow: 0
-// 01->02 aggregate_cluster upstream_rq_pending_failure_eject: 0
-// 01->02 aggregate_cluster upstream_rq_pending_active: 0
-// 01->02 aggregate_cluster upstream_rq_cancelled: 0
-// 01->02 aggregate_cluster upstream_rq_maintenance_mode: 0
-// 01->02 aggregate_cluster upstream_rq_timeout: 0
-// 01->02 aggregate_cluster upstream_rq_max_duration_reached: 0
-// 01->02 aggregate_cluster upstream_rq_per_try_timeout: 0
-// 01->02 aggregate_cluster upstream_rq_rx_reset: 0
-// 01->02 aggregate_cluster upstream_rq_tx_reset: 0
-// 01->02 cluster_1 cx_open: 0
-// 01->02 cluster_1 remaining_cx: 1
-// 01->02 cluster_1 upstream_cx_overflow: 0
-// 01->02 cluster_1 upstream_cx_total: 0
-// 01->02 cluster_1 upstream_cx_active: 0
-// 01->02 cluster_1 upstream_cx_http1_total: 0
-// 01->02 cluster_1 upstream_cx_http2_total: 0
-// 01->02 cluster_1 upstream_cx_http3_total: 0
-// 01->02 cluster_1 upstream_cx_connect_fail: 0
-// 01->02 cluster_1 upstream_cx_connect_timeout: 0
-// 01->02 cluster_1 upstream_cx_connect_with_0_rtt: 0
-// 01->02 cluster_1 upstream_cx_idle_timeout: 0
-// 01->02 cluster_1 upstream_cx_max_duration_reached: 0
-// 01->02 cluster_1 upstream_cx_connect_attempts_exceeded: 0
-// 01->02 cluster_1 upstream_cx_destroy: 0
-// 01->02 cluster_1 upstream_cx_destroy_local: 0
-// 01->02 cluster_1 upstream_cx_destroy_remote: 0
-// 01->02 cluster_1 upstream_cx_destroy_with_active_rq: 0
-// 01->02 cluster_1 upstream_cx_destroy_local_with_active_rq: 0
-// 01->02 cluster_1 upstream_cx_destroy_remote_with_active_rq: 0
-// 01->02 cluster_1 upstream_cx_close_notify: 0
-// 01->02 cluster_1 upstream_cx_rx_bytes_total: 0
-// 01->02 cluster_1 upstream_cx_rx_bytes_buffered: 0
-// 01->02 cluster_1 upstream_cx_tx_bytes_total: 0
-// 01->02 cluster_1 upstream_cx_tx_bytes_buffered: 0
-// 01->02 cluster_1 upstream_cx_pool_overflow: 0
-// 01->02 cluster_1 upstream_cx_protocol_error: 0
-// 01->02 cluster_1 upstream_cx_max_requests: 0
-// 01->02 cluster_1 upstream_cx_none_healthy: 0
-// 01->02 cluster_1 upstream_rq_total: 0
-// 01->02 cluster_1 upstream_rq_active: 0
-// 01->02 cluster_1 upstream_rq_pending_total: 0
-// 01->02 cluster_1 upstream_rq_pending_overflow: 0
-// 01->02 cluster_1 upstream_rq_pending_failure_eject: 0
-// 01->02 cluster_1 upstream_rq_pending_active: 0
-// 01->02 cluster_1 upstream_rq_cancelled: 0
-// 01->02 cluster_1 upstream_rq_maintenance_mode: 0
-// 01->02 cluster_1 upstream_rq_timeout: 0
-// 01->02 cluster_1 upstream_rq_max_duration_reached: 0
-// 01->02 cluster_1 upstream_rq_per_try_timeout: 0
-// 01->02 cluster_1 upstream_rq_rx_reset: 0
-// 01->02 cluster_1 upstream_rq_tx_reset: 0
-// ---------- ^CHECKPOINT 02 : MADE HTTP CONNECTION -------------
-// ---------- ^CHECKPOINT 03 : SENT FIRST REQUEST -------------
-// 03->04 aggregate_cluster cx_open: 0
-// 03->04 aggregate_cluster remaining_cx: 1
-// 03->04 aggregate_cluster upstream_cx_overflow: 0
-// 03->04 aggregate_cluster upstream_cx_total: 0
-// 03->04 aggregate_cluster upstream_cx_active: 0
-// 03->04 aggregate_cluster upstream_cx_http1_total: 0
-// 03->04 aggregate_cluster upstream_cx_http2_total: 0
-// 03->04 aggregate_cluster upstream_cx_http3_total: 0
-// 03->04 aggregate_cluster upstream_cx_connect_fail: 0
-// 03->04 aggregate_cluster upstream_cx_connect_timeout: 0
-// 03->04 aggregate_cluster upstream_cx_connect_with_0_rtt: 0
-// 03->04 aggregate_cluster upstream_cx_idle_timeout: 0
-// 03->04 aggregate_cluster upstream_cx_max_duration_reached: 0
-// 03->04 aggregate_cluster upstream_cx_connect_attempts_exceeded: 0
-// 03->04 aggregate_cluster upstream_cx_destroy: 0
-// 03->04 aggregate_cluster upstream_cx_destroy_local: 0
-// 03->04 aggregate_cluster upstream_cx_destroy_remote: 0
-// 03->04 aggregate_cluster upstream_cx_destroy_with_active_rq: 0
-// 03->04 aggregate_cluster upstream_cx_destroy_local_with_active_rq: 0
-// 03->04 aggregate_cluster upstream_cx_destroy_remote_with_active_rq: 0
-// 03->04 aggregate_cluster upstream_cx_close_notify: 0
-// 03->04 aggregate_cluster upstream_cx_rx_bytes_total: 0
-// 03->04 aggregate_cluster upstream_cx_rx_bytes_buffered: 0
-// 03->04 aggregate_cluster upstream_cx_tx_bytes_total: 0
-// 03->04 aggregate_cluster upstream_cx_tx_bytes_buffered: 0
-// 03->04 aggregate_cluster upstream_cx_pool_overflow: 0
-// 03->04 aggregate_cluster upstream_cx_protocol_error: 0
-// 03->04 aggregate_cluster upstream_cx_max_requests: 0
-// 03->04 aggregate_cluster upstream_cx_none_healthy: 0
-// 03->04 aggregate_cluster upstream_rq_total: 0
-// 03->04 aggregate_cluster upstream_rq_active: 0
-// 03->04 aggregate_cluster upstream_rq_pending_total: 0
-// 03->04 aggregate_cluster upstream_rq_pending_overflow: 0
-// 03->04 aggregate_cluster upstream_rq_pending_failure_eject: 0
-// 03->04 aggregate_cluster upstream_rq_pending_active: 0
-// 03->04 aggregate_cluster upstream_rq_cancelled: 0
-// 03->04 aggregate_cluster upstream_rq_maintenance_mode: 0
-// 03->04 aggregate_cluster upstream_rq_timeout: 0
-// 03->04 aggregate_cluster upstream_rq_max_duration_reached: 0
-// 03->04 aggregate_cluster upstream_rq_per_try_timeout: 0
-// 03->04 aggregate_cluster upstream_rq_rx_reset: 0
-// 03->04 aggregate_cluster upstream_rq_tx_reset: 0
-// 03->04 cluster_1 cx_open: 1
-// 03->04 cluster_1 remaining_cx: 0
-// 03->04 cluster_1 upstream_cx_overflow: 0
-// 03->04 cluster_1 upstream_cx_total: 1
-// 03->04 cluster_1 upstream_cx_active: 1
-// 03->04 cluster_1 upstream_cx_http1_total: 0
-// 03->04 cluster_1 upstream_cx_http2_total: 1
-// 03->04 cluster_1 upstream_cx_http3_total: 0
-// 03->04 cluster_1 upstream_cx_connect_fail: 0
-// 03->04 cluster_1 upstream_cx_connect_timeout: 0
-// 03->04 cluster_1 upstream_cx_connect_with_0_rtt: 0
-// 03->04 cluster_1 upstream_cx_idle_timeout: 0
-// 03->04 cluster_1 upstream_cx_max_duration_reached: 0
-// 03->04 cluster_1 upstream_cx_connect_attempts_exceeded: 0
-// 03->04 cluster_1 upstream_cx_destroy: 0
-// 03->04 cluster_1 upstream_cx_destroy_local: 0
-// 03->04 cluster_1 upstream_cx_destroy_remote: 0
-// 03->04 cluster_1 upstream_cx_destroy_with_active_rq: 0
-// 03->04 cluster_1 upstream_cx_destroy_local_with_active_rq: 0
-// 03->04 cluster_1 upstream_cx_destroy_remote_with_active_rq: 0
-// 03->04 cluster_1 upstream_cx_close_notify: 0
-// 03->04 cluster_1 upstream_cx_rx_bytes_total: 55
-// 03->04 cluster_1 upstream_cx_rx_bytes_buffered: 55
-// 03->04 cluster_1 upstream_cx_tx_bytes_total: 201
-// 03->04 cluster_1 upstream_cx_tx_bytes_buffered: 0
-// 03->04 cluster_1 upstream_cx_pool_overflow: 0
-// 03->04 cluster_1 upstream_cx_protocol_error: 0
-// 03->04 cluster_1 upstream_cx_max_requests: 1
-// 03->04 cluster_1 upstream_cx_none_healthy: 0
-// 03->04 cluster_1 upstream_rq_total: 1
-// 03->04 cluster_1 upstream_rq_active: 1
-// 03->04 cluster_1 upstream_rq_pending_total: 1
-// 03->04 cluster_1 upstream_rq_pending_overflow: 0
-// 03->04 cluster_1 upstream_rq_pending_failure_eject: 0
-// 03->04 cluster_1 upstream_rq_pending_active: 0
-// 03->04 cluster_1 upstream_rq_cancelled: 0
-// 03->04 cluster_1 upstream_rq_maintenance_mode: 0
-// 03->04 cluster_1 upstream_rq_timeout: 0
-// 03->04 cluster_1 upstream_rq_max_duration_reached: 0
-// 03->04 cluster_1 upstream_rq_per_try_timeout: 0
-// 03->04 cluster_1 upstream_rq_rx_reset: 0
-// 03->04 cluster_1 upstream_rq_tx_reset: 0
-// ---------- ^CHECKPOINT 04 : FIRST REQUEST ARRIVED AT UPSTREAM -------------
-// 04->05 aggregate_cluster cx_open: 0
-// 04->05 aggregate_cluster remaining_cx: 1
-// 04->05 aggregate_cluster upstream_cx_overflow: 0
-// 04->05 aggregate_cluster upstream_cx_total: 0
-// 04->05 aggregate_cluster upstream_cx_active: 0
-// 04->05 aggregate_cluster upstream_cx_http1_total: 0
-// 04->05 aggregate_cluster upstream_cx_http2_total: 0
-// 04->05 aggregate_cluster upstream_cx_http3_total: 0
-// 04->05 aggregate_cluster upstream_cx_connect_fail: 0
-// 04->05 aggregate_cluster upstream_cx_connect_timeout: 0
-// 04->05 aggregate_cluster upstream_cx_connect_with_0_rtt: 0
-// 04->05 aggregate_cluster upstream_cx_idle_timeout: 0
-// 04->05 aggregate_cluster upstream_cx_max_duration_reached: 0
-// 04->05 aggregate_cluster upstream_cx_connect_attempts_exceeded: 0
-// 04->05 aggregate_cluster upstream_cx_destroy: 0
-// 04->05 aggregate_cluster upstream_cx_destroy_local: 0
-// 04->05 aggregate_cluster upstream_cx_destroy_remote: 0
-// 04->05 aggregate_cluster upstream_cx_destroy_with_active_rq: 0
-// 04->05 aggregate_cluster upstream_cx_destroy_local_with_active_rq: 0
-// 04->05 aggregate_cluster upstream_cx_destroy_remote_with_active_rq: 0
-// 04->05 aggregate_cluster upstream_cx_close_notify: 0
-// 04->05 aggregate_cluster upstream_cx_rx_bytes_total: 0
-// 04->05 aggregate_cluster upstream_cx_rx_bytes_buffered: 0
-// 04->05 aggregate_cluster upstream_cx_tx_bytes_total: 0
-// 04->05 aggregate_cluster upstream_cx_tx_bytes_buffered: 0
-// 04->05 aggregate_cluster upstream_cx_pool_overflow: 0
-// 04->05 aggregate_cluster upstream_cx_protocol_error: 0
-// 04->05 aggregate_cluster upstream_cx_max_requests: 0
-// 04->05 aggregate_cluster upstream_cx_none_healthy: 0
-// 04->05 aggregate_cluster upstream_rq_total: 0
-// 04->05 aggregate_cluster upstream_rq_active: 0
-// 04->05 aggregate_cluster upstream_rq_pending_total: 0
-// 04->05 aggregate_cluster upstream_rq_pending_overflow: 0
-// 04->05 aggregate_cluster upstream_rq_pending_failure_eject: 0
-// 04->05 aggregate_cluster upstream_rq_pending_active: 0
-// 04->05 aggregate_cluster upstream_rq_cancelled: 0
-// 04->05 aggregate_cluster upstream_rq_maintenance_mode: 0
-// 04->05 aggregate_cluster upstream_rq_timeout: 0
-// 04->05 aggregate_cluster upstream_rq_max_duration_reached: 0
-// 04->05 aggregate_cluster upstream_rq_per_try_timeout: 0
-// 04->05 aggregate_cluster upstream_rq_rx_reset: 0
-// 04->05 aggregate_cluster upstream_rq_tx_reset: 0
-// 04->05 cluster_1 cx_open: 1
-// 04->05 cluster_1 remaining_cx: 0
-// 04->05 cluster_1 upstream_cx_overflow: 0
-// 04->05 cluster_1 upstream_cx_total: 1
-// 04->05 cluster_1 upstream_cx_active: 1
-// 04->05 cluster_1 upstream_cx_http1_total: 0
-// 04->05 cluster_1 upstream_cx_http2_total: 1
-// 04->05 cluster_1 upstream_cx_http3_total: 0
-// 04->05 cluster_1 upstream_cx_connect_fail: 0
-// 04->05 cluster_1 upstream_cx_connect_timeout: 0
-// 04->05 cluster_1 upstream_cx_connect_with_0_rtt: 0
-// 04->05 cluster_1 upstream_cx_idle_timeout: 0
-// 04->05 cluster_1 upstream_cx_max_duration_reached: 0
-// 04->05 cluster_1 upstream_cx_connect_attempts_exceeded: 0
-// 04->05 cluster_1 upstream_cx_destroy: 0
-// 04->05 cluster_1 upstream_cx_destroy_local: 0
-// 04->05 cluster_1 upstream_cx_destroy_remote: 0
-// 04->05 cluster_1 upstream_cx_destroy_with_active_rq: 0
-// 04->05 cluster_1 upstream_cx_destroy_local_with_active_rq: 0
-// 04->05 cluster_1 upstream_cx_destroy_remote_with_active_rq: 0
-// 04->05 cluster_1 upstream_cx_close_notify: 0
-// 04->05 cluster_1 upstream_cx_rx_bytes_total: 55
-// 04->05 cluster_1 upstream_cx_rx_bytes_buffered: 55
-// 04->05 cluster_1 upstream_cx_tx_bytes_total: 201
-// 04->05 cluster_1 upstream_cx_tx_bytes_buffered: 0
-// 04->05 cluster_1 upstream_cx_pool_overflow: 0
-// 04->05 cluster_1 upstream_cx_protocol_error: 0
-// 04->05 cluster_1 upstream_cx_max_requests: 1
-// 04->05 cluster_1 upstream_cx_none_healthy: 0
-// 04->05 cluster_1 upstream_rq_total: 1
-// 04->05 cluster_1 upstream_rq_active: 1
-// 04->05 cluster_1 upstream_rq_pending_total: 1
-// 04->05 cluster_1 upstream_rq_pending_overflow: 0
-// 04->05 cluster_1 upstream_rq_pending_failure_eject: 0
-// 04->05 cluster_1 upstream_rq_pending_active: 0
-// 04->05 cluster_1 upstream_rq_cancelled: 0
-// 04->05 cluster_1 upstream_rq_maintenance_mode: 0
-// 04->05 cluster_1 upstream_rq_timeout: 0
-// 04->05 cluster_1 upstream_rq_max_duration_reached: 0
-// 04->05 cluster_1 upstream_rq_per_try_timeout: 0
-// 04->05 cluster_1 upstream_rq_rx_reset: 0
-// 04->05 cluster_1 upstream_rq_tx_reset: 0
-// ---------- ^CHECKPOINT 05 : MAX CONNECTIONS CIRCUIT BREAKER TRIPPED -------------
-// ---------- ^CHECKPOINT 06 : SENT SECOND REQUEST (USING SAME CLIENT) -------------
-// 06->07 aggregate_cluster cx_open: 0
-// 06->07 aggregate_cluster remaining_cx: 1
-// 06->07 aggregate_cluster upstream_cx_overflow: 0
-// 06->07 aggregate_cluster upstream_cx_total: 0
-// 06->07 aggregate_cluster upstream_cx_active: 0
-// 06->07 aggregate_cluster upstream_cx_http1_total: 0
-// 06->07 aggregate_cluster upstream_cx_http2_total: 0
-// 06->07 aggregate_cluster upstream_cx_http3_total: 0
-// 06->07 aggregate_cluster upstream_cx_connect_fail: 0
-// 06->07 aggregate_cluster upstream_cx_connect_timeout: 0
-// 06->07 aggregate_cluster upstream_cx_connect_with_0_rtt: 0
-// 06->07 aggregate_cluster upstream_cx_idle_timeout: 0
-// 06->07 aggregate_cluster upstream_cx_max_duration_reached: 0
-// 06->07 aggregate_cluster upstream_cx_connect_attempts_exceeded: 0
-// 06->07 aggregate_cluster upstream_cx_destroy: 0
-// 06->07 aggregate_cluster upstream_cx_destroy_local: 0
-// 06->07 aggregate_cluster upstream_cx_destroy_remote: 0
-// 06->07 aggregate_cluster upstream_cx_destroy_with_active_rq: 0
-// 06->07 aggregate_cluster upstream_cx_destroy_local_with_active_rq: 0
-// 06->07 aggregate_cluster upstream_cx_destroy_remote_with_active_rq: 0
-// 06->07 aggregate_cluster upstream_cx_close_notify: 0
-// 06->07 aggregate_cluster upstream_cx_rx_bytes_total: 0
-// 06->07 aggregate_cluster upstream_cx_rx_bytes_buffered: 0
-// 06->07 aggregate_cluster upstream_cx_tx_bytes_total: 0
-// 06->07 aggregate_cluster upstream_cx_tx_bytes_buffered: 0
-// 06->07 aggregate_cluster upstream_cx_pool_overflow: 0
-// 06->07 aggregate_cluster upstream_cx_protocol_error: 0
-// 06->07 aggregate_cluster upstream_cx_max_requests: 0
-// 06->07 aggregate_cluster upstream_cx_none_healthy: 0
-// 06->07 aggregate_cluster upstream_rq_total: 0
-// 06->07 aggregate_cluster upstream_rq_active: 0
-// 06->07 aggregate_cluster upstream_rq_pending_total: 0
-// 06->07 aggregate_cluster upstream_rq_pending_overflow: 0
-// 06->07 aggregate_cluster upstream_rq_pending_failure_eject: 0
-// 06->07 aggregate_cluster upstream_rq_pending_active: 0
-// 06->07 aggregate_cluster upstream_rq_cancelled: 0
-// 06->07 aggregate_cluster upstream_rq_maintenance_mode: 0
-// 06->07 aggregate_cluster upstream_rq_timeout: 0
-// 06->07 aggregate_cluster upstream_rq_max_duration_reached: 0
-// 06->07 aggregate_cluster upstream_rq_per_try_timeout: 0
-// 06->07 aggregate_cluster upstream_rq_rx_reset: 0
-// 06->07 aggregate_cluster upstream_rq_tx_reset: 0
-// 06->07 cluster_1 cx_open: 1
-// 06->07 cluster_1 remaining_cx: 0
-// 06->07 cluster_1 upstream_cx_overflow: 1
-// 06->07 cluster_1 upstream_cx_total: 1
-// 06->07 cluster_1 upstream_cx_active: 1
-// 06->07 cluster_1 upstream_cx_http1_total: 0
-// 06->07 cluster_1 upstream_cx_http2_total: 1
-// 06->07 cluster_1 upstream_cx_http3_total: 0
-// 06->07 cluster_1 upstream_cx_connect_fail: 0
-// 06->07 cluster_1 upstream_cx_connect_timeout: 0
-// 06->07 cluster_1 upstream_cx_connect_with_0_rtt: 0
-// 06->07 cluster_1 upstream_cx_idle_timeout: 0
-// 06->07 cluster_1 upstream_cx_max_duration_reached: 0
-// 06->07 cluster_1 upstream_cx_connect_attempts_exceeded: 0
-// 06->07 cluster_1 upstream_cx_destroy: 0
-// 06->07 cluster_1 upstream_cx_destroy_local: 0
-// 06->07 cluster_1 upstream_cx_destroy_remote: 0
-// 06->07 cluster_1 upstream_cx_destroy_with_active_rq: 0
-// 06->07 cluster_1 upstream_cx_destroy_local_with_active_rq: 0
-// 06->07 cluster_1 upstream_cx_destroy_remote_with_active_rq: 0
-// 06->07 cluster_1 upstream_cx_close_notify: 0
-// 06->07 cluster_1 upstream_cx_rx_bytes_total: 55
-// 06->07 cluster_1 upstream_cx_rx_bytes_buffered: 55
-// 06->07 cluster_1 upstream_cx_tx_bytes_total: 201
-// 06->07 cluster_1 upstream_cx_tx_bytes_buffered: 0
-// 06->07 cluster_1 upstream_cx_pool_overflow: 0
-// 06->07 cluster_1 upstream_cx_protocol_error: 0
-// 06->07 cluster_1 upstream_cx_max_requests: 1
-// 06->07 cluster_1 upstream_cx_none_healthy: 0
-// 06->07 cluster_1 upstream_rq_total: 1
-// 06->07 cluster_1 upstream_rq_active: 1
-// 06->07 cluster_1 upstream_rq_pending_total: 2
-// 06->07 cluster_1 upstream_rq_pending_overflow: 0
-// 06->07 cluster_1 upstream_rq_pending_failure_eject: 0
-// 06->07 cluster_1 upstream_rq_pending_active: 1
-// 06->07 cluster_1 upstream_rq_cancelled: 0
-// 06->07 cluster_1 upstream_rq_maintenance_mode: 0
-// 06->07 cluster_1 upstream_rq_timeout: 0
-// 06->07 cluster_1 upstream_rq_max_duration_reached: 0
-// 06->07 cluster_1 upstream_rq_per_try_timeout: 0
-// 06->07 cluster_1 upstream_rq_rx_reset: 0
-// 06->07 cluster_1 upstream_rq_tx_reset: 0
-// ---------- ^CHECKPOINT 07 : OVERFLOW INCREMENTED -------------
-// ---------- ^CHECKPOINT 08 : SENT THIRD REQUEST (USING SAME CLIENT) -------------
-// 08->09 aggregate_cluster cx_open: 0
-// 08->09 aggregate_cluster remaining_cx: 1
-// 08->09 aggregate_cluster upstream_cx_overflow: 0
-// 08->09 aggregate_cluster upstream_cx_total: 0
-// 08->09 aggregate_cluster upstream_cx_active: 0
-// 08->09 aggregate_cluster upstream_cx_http1_total: 0
-// 08->09 aggregate_cluster upstream_cx_http2_total: 0
-// 08->09 aggregate_cluster upstream_cx_http3_total: 0
-// 08->09 aggregate_cluster upstream_cx_connect_fail: 0
-// 08->09 aggregate_cluster upstream_cx_connect_timeout: 0
-// 08->09 aggregate_cluster upstream_cx_connect_with_0_rtt: 0
-// 08->09 aggregate_cluster upstream_cx_idle_timeout: 0
-// 08->09 aggregate_cluster upstream_cx_max_duration_reached: 0
-// 08->09 aggregate_cluster upstream_cx_connect_attempts_exceeded: 0
-// 08->09 aggregate_cluster upstream_cx_destroy: 0
-// 08->09 aggregate_cluster upstream_cx_destroy_local: 0
-// 08->09 aggregate_cluster upstream_cx_destroy_remote: 0
-// 08->09 aggregate_cluster upstream_cx_destroy_with_active_rq: 0
-// 08->09 aggregate_cluster upstream_cx_destroy_local_with_active_rq: 0
-// 08->09 aggregate_cluster upstream_cx_destroy_remote_with_active_rq: 0
-// 08->09 aggregate_cluster upstream_cx_close_notify: 0
-// 08->09 aggregate_cluster upstream_cx_rx_bytes_total: 0
-// 08->09 aggregate_cluster upstream_cx_rx_bytes_buffered: 0
-// 08->09 aggregate_cluster upstream_cx_tx_bytes_total: 0
-// 08->09 aggregate_cluster upstream_cx_tx_bytes_buffered: 0
-// 08->09 aggregate_cluster upstream_cx_pool_overflow: 0
-// 08->09 aggregate_cluster upstream_cx_protocol_error: 0
-// 08->09 aggregate_cluster upstream_cx_max_requests: 0
-// 08->09 aggregate_cluster upstream_cx_none_healthy: 0
-// 08->09 aggregate_cluster upstream_rq_total: 0
-// 08->09 aggregate_cluster upstream_rq_active: 0
-// 08->09 aggregate_cluster upstream_rq_pending_total: 0
-// 08->09 aggregate_cluster upstream_rq_pending_overflow: 0
-// 08->09 aggregate_cluster upstream_rq_pending_failure_eject: 0
-// 08->09 aggregate_cluster upstream_rq_pending_active: 0
-// 08->09 aggregate_cluster upstream_rq_cancelled: 0
-// 08->09 aggregate_cluster upstream_rq_maintenance_mode: 0
-// 08->09 aggregate_cluster upstream_rq_timeout: 0
-// 08->09 aggregate_cluster upstream_rq_max_duration_reached: 0
-// 08->09 aggregate_cluster upstream_rq_per_try_timeout: 0
-// 08->09 aggregate_cluster upstream_rq_rx_reset: 0
-// 08->09 aggregate_cluster upstream_rq_tx_reset: 0
-// 08->09 cluster_1 cx_open: 1
-// 08->09 cluster_1 remaining_cx: 0
-// 08->09 cluster_1 upstream_cx_overflow: 2
-// 08->09 cluster_1 upstream_cx_total: 1
-// 08->09 cluster_1 upstream_cx_active: 1
-// 08->09 cluster_1 upstream_cx_http1_total: 0
-// 08->09 cluster_1 upstream_cx_http2_total: 1
-// 08->09 cluster_1 upstream_cx_http3_total: 0
-// 08->09 cluster_1 upstream_cx_connect_fail: 0
-// 08->09 cluster_1 upstream_cx_connect_timeout: 0
-// 08->09 cluster_1 upstream_cx_connect_with_0_rtt: 0
-// 08->09 cluster_1 upstream_cx_idle_timeout: 0
-// 08->09 cluster_1 upstream_cx_max_duration_reached: 0
-// 08->09 cluster_1 upstream_cx_connect_attempts_exceeded: 0
-// 08->09 cluster_1 upstream_cx_destroy: 0
-// 08->09 cluster_1 upstream_cx_destroy_local: 0
-// 08->09 cluster_1 upstream_cx_destroy_remote: 0
-// 08->09 cluster_1 upstream_cx_destroy_with_active_rq: 0
-// 08->09 cluster_1 upstream_cx_destroy_local_with_active_rq: 0
-// 08->09 cluster_1 upstream_cx_destroy_remote_with_active_rq: 0
-// 08->09 cluster_1 upstream_cx_close_notify: 0
-// 08->09 cluster_1 upstream_cx_rx_bytes_total: 55
-// 08->09 cluster_1 upstream_cx_rx_bytes_buffered: 55
-// 08->09 cluster_1 upstream_cx_tx_bytes_total: 201
-// 08->09 cluster_1 upstream_cx_tx_bytes_buffered: 0
-// 08->09 cluster_1 upstream_cx_pool_overflow: 0
-// 08->09 cluster_1 upstream_cx_protocol_error: 0
-// 08->09 cluster_1 upstream_cx_max_requests: 1
-// 08->09 cluster_1 upstream_cx_none_healthy: 0
-// 08->09 cluster_1 upstream_rq_total: 1
-// 08->09 cluster_1 upstream_rq_active: 1
-// 08->09 cluster_1 upstream_rq_pending_total: 3
-// 08->09 cluster_1 upstream_rq_pending_overflow: 0
-// 08->09 cluster_1 upstream_rq_pending_failure_eject: 0
-// 08->09 cluster_1 upstream_rq_pending_active: 2
-// 08->09 cluster_1 upstream_rq_cancelled: 0
-// 08->09 cluster_1 upstream_rq_maintenance_mode: 0
-// 08->09 cluster_1 upstream_rq_timeout: 0
-// 08->09 cluster_1 upstream_rq_max_duration_reached: 0
-// 08->09 cluster_1 upstream_rq_per_try_timeout: 0
-// 08->09 cluster_1 upstream_rq_rx_reset: 0
-// 08->09 cluster_1 upstream_rq_tx_reset: 0
-// ---------- ^CHECKPOINT 09 : OVERFLOW INCREMENTED AGAIN -------------
-// 09->10 aggregate_cluster cx_open: 0
-// 09->10 aggregate_cluster remaining_cx: 1
-// 09->10 aggregate_cluster upstream_cx_overflow: 0
-// 09->10 aggregate_cluster upstream_cx_total: 0
-// 09->10 aggregate_cluster upstream_cx_active: 0
-// 09->10 aggregate_cluster upstream_cx_http1_total: 0
-// 09->10 aggregate_cluster upstream_cx_http2_total: 0
-// 09->10 aggregate_cluster upstream_cx_http3_total: 0
-// 09->10 aggregate_cluster upstream_cx_connect_fail: 0
-// 09->10 aggregate_cluster upstream_cx_connect_timeout: 0
-// 09->10 aggregate_cluster upstream_cx_connect_with_0_rtt: 0
-// 09->10 aggregate_cluster upstream_cx_idle_timeout: 0
-// 09->10 aggregate_cluster upstream_cx_max_duration_reached: 0
-// 09->10 aggregate_cluster upstream_cx_connect_attempts_exceeded: 0
-// 09->10 aggregate_cluster upstream_cx_destroy: 0
-// 09->10 aggregate_cluster upstream_cx_destroy_local: 0
-// 09->10 aggregate_cluster upstream_cx_destroy_remote: 0
-// 09->10 aggregate_cluster upstream_cx_destroy_with_active_rq: 0
-// 09->10 aggregate_cluster upstream_cx_destroy_local_with_active_rq: 0
-// 09->10 aggregate_cluster upstream_cx_destroy_remote_with_active_rq: 0
-// 09->10 aggregate_cluster upstream_cx_close_notify: 0
-// 09->10 aggregate_cluster upstream_cx_rx_bytes_total: 0
-// 09->10 aggregate_cluster upstream_cx_rx_bytes_buffered: 0
-// 09->10 aggregate_cluster upstream_cx_tx_bytes_total: 0
-// 09->10 aggregate_cluster upstream_cx_tx_bytes_buffered: 0
-// 09->10 aggregate_cluster upstream_cx_pool_overflow: 0
-// 09->10 aggregate_cluster upstream_cx_protocol_error: 0
-// 09->10 aggregate_cluster upstream_cx_max_requests: 0
-// 09->10 aggregate_cluster upstream_cx_none_healthy: 0
-// 09->10 aggregate_cluster upstream_rq_total: 0
-// 09->10 aggregate_cluster upstream_rq_active: 0
-// 09->10 aggregate_cluster upstream_rq_pending_total: 0
-// 09->10 aggregate_cluster upstream_rq_pending_overflow: 0
-// 09->10 aggregate_cluster upstream_rq_pending_failure_eject: 0
-// 09->10 aggregate_cluster upstream_rq_pending_active: 0
-// 09->10 aggregate_cluster upstream_rq_cancelled: 0
-// 09->10 aggregate_cluster upstream_rq_maintenance_mode: 0
-// 09->10 aggregate_cluster upstream_rq_timeout: 0
-// 09->10 aggregate_cluster upstream_rq_max_duration_reached: 0
-// 09->10 aggregate_cluster upstream_rq_per_try_timeout: 0
-// 09->10 aggregate_cluster upstream_rq_rx_reset: 0
-// 09->10 aggregate_cluster upstream_rq_tx_reset: 0
-// 09->10 cluster_1 cx_open: 1
-// 09->10 cluster_1 remaining_cx: 0
-// 09->10 cluster_1 upstream_cx_overflow: 4
-// 09->10 cluster_1 upstream_cx_total: 2
-// 09->10 cluster_1 upstream_cx_active: 1
-// 09->10 cluster_1 upstream_cx_http1_total: 0
-// 09->10 cluster_1 upstream_cx_http2_total: 2
-// 09->10 cluster_1 upstream_cx_http3_total: 0
-// 09->10 cluster_1 upstream_cx_connect_fail: 0
-// 09->10 cluster_1 upstream_cx_connect_timeout: 0
-// 09->10 cluster_1 upstream_cx_connect_with_0_rtt: 0
-// 09->10 cluster_1 upstream_cx_idle_timeout: 0
-// 09->10 cluster_1 upstream_cx_max_duration_reached: 0
-// 09->10 cluster_1 upstream_cx_connect_attempts_exceeded: 0
-// 09->10 cluster_1 upstream_cx_destroy: 1
-// 09->10 cluster_1 upstream_cx_destroy_local: 1
-// 09->10 cluster_1 upstream_cx_destroy_remote: 0
-// 09->10 cluster_1 upstream_cx_destroy_with_active_rq: 0
-// 09->10 cluster_1 upstream_cx_destroy_local_with_active_rq: 0
-// 09->10 cluster_1 upstream_cx_destroy_remote_with_active_rq: 0
-// 09->10 cluster_1 upstream_cx_close_notify: 0
-// 09->10 cluster_1 upstream_cx_rx_bytes_total: 65
-// 09->10 cluster_1 upstream_cx_rx_bytes_buffered: 0
-// 09->10 cluster_1 upstream_cx_tx_bytes_total: 393
-// 09->10 cluster_1 upstream_cx_tx_bytes_buffered: 0
-// 09->10 cluster_1 upstream_cx_pool_overflow: 0
-// 09->10 cluster_1 upstream_cx_protocol_error: 1
-// 09->10 cluster_1 upstream_cx_max_requests: 2
-// 09->10 cluster_1 upstream_cx_none_healthy: 0
-// 09->10 cluster_1 upstream_rq_total: 2
-// 09->10 cluster_1 upstream_rq_active: 1
-// 09->10 cluster_1 upstream_rq_pending_total: 3
-// 09->10 cluster_1 upstream_rq_pending_overflow: 0
-// 09->10 cluster_1 upstream_rq_pending_failure_eject: 0
-// 09->10 cluster_1 upstream_rq_pending_active: 1
-// 09->10 cluster_1 upstream_rq_cancelled: 0
-// 09->10 cluster_1 upstream_rq_maintenance_mode: 0
-// 09->10 cluster_1 upstream_rq_timeout: 0
-// 09->10 cluster_1 upstream_rq_max_duration_reached: 0
-// 09->10 cluster_1 upstream_rq_per_try_timeout: 0
-// 09->10 cluster_1 upstream_rq_rx_reset: 0
-// 09->10 cluster_1 upstream_rq_tx_reset: 0
-// ---------- ^CHECKPOINT 10 : UPSTREAM RESPONDED TO FIRST REQUEST -------------
-// 10->11 aggregate_cluster cx_open: 0
-// 10->11 aggregate_cluster remaining_cx: 1
-// 10->11 aggregate_cluster upstream_cx_overflow: 0
-// 10->11 aggregate_cluster upstream_cx_total: 0
-// 10->11 aggregate_cluster upstream_cx_active: 0
-// 10->11 aggregate_cluster upstream_cx_http1_total: 0
-// 10->11 aggregate_cluster upstream_cx_http2_total: 0
-// 10->11 aggregate_cluster upstream_cx_http3_total: 0
-// 10->11 aggregate_cluster upstream_cx_connect_fail: 0
-// 10->11 aggregate_cluster upstream_cx_connect_timeout: 0
-// 10->11 aggregate_cluster upstream_cx_connect_with_0_rtt: 0
-// 10->11 aggregate_cluster upstream_cx_idle_timeout: 0
-// 10->11 aggregate_cluster upstream_cx_max_duration_reached: 0
-// 10->11 aggregate_cluster upstream_cx_connect_attempts_exceeded: 0
-// 10->11 aggregate_cluster upstream_cx_destroy: 0
-// 10->11 aggregate_cluster upstream_cx_destroy_local: 0
-// 10->11 aggregate_cluster upstream_cx_destroy_remote: 0
-// 10->11 aggregate_cluster upstream_cx_destroy_with_active_rq: 0
-// 10->11 aggregate_cluster upstream_cx_destroy_local_with_active_rq: 0
-// 10->11 aggregate_cluster upstream_cx_destroy_remote_with_active_rq: 0
-// 10->11 aggregate_cluster upstream_cx_close_notify: 0
-// 10->11 aggregate_cluster upstream_cx_rx_bytes_total: 0
-// 10->11 aggregate_cluster upstream_cx_rx_bytes_buffered: 0
-// 10->11 aggregate_cluster upstream_cx_tx_bytes_total: 0
-// 10->11 aggregate_cluster upstream_cx_tx_bytes_buffered: 0
-// 10->11 aggregate_cluster upstream_cx_pool_overflow: 0
-// 10->11 aggregate_cluster upstream_cx_protocol_error: 0
-// 10->11 aggregate_cluster upstream_cx_max_requests: 0
-// 10->11 aggregate_cluster upstream_cx_none_healthy: 0
-// 10->11 aggregate_cluster upstream_rq_total: 0
-// 10->11 aggregate_cluster upstream_rq_active: 0
-// 10->11 aggregate_cluster upstream_rq_pending_total: 0
-// 10->11 aggregate_cluster upstream_rq_pending_overflow: 0
-// 10->11 aggregate_cluster upstream_rq_pending_failure_eject: 0
-// 10->11 aggregate_cluster upstream_rq_pending_active: 0
-// 10->11 aggregate_cluster upstream_rq_cancelled: 0
-// 10->11 aggregate_cluster upstream_rq_maintenance_mode: 0
-// 10->11 aggregate_cluster upstream_rq_timeout: 0
-// 10->11 aggregate_cluster upstream_rq_max_duration_reached: 0
-// 10->11 aggregate_cluster upstream_rq_per_try_timeout: 0
-// 10->11 aggregate_cluster upstream_rq_rx_reset: 0
-// 10->11 aggregate_cluster upstream_rq_tx_reset: 0
-// 10->11 cluster_1 cx_open: 1
-// 10->11 cluster_1 remaining_cx: 0
-// 10->11 cluster_1 upstream_cx_overflow: 4
-// 10->11 cluster_1 upstream_cx_total: 2
-// 10->11 cluster_1 upstream_cx_active: 1
-// 10->11 cluster_1 upstream_cx_http1_total: 0
-// 10->11 cluster_1 upstream_cx_http2_total: 2
-// 10->11 cluster_1 upstream_cx_http3_total: 0
-// 10->11 cluster_1 upstream_cx_connect_fail: 0
-// 10->11 cluster_1 upstream_cx_connect_timeout: 0
-// 10->11 cluster_1 upstream_cx_connect_with_0_rtt: 0
-// 10->11 cluster_1 upstream_cx_idle_timeout: 0
-// 10->11 cluster_1 upstream_cx_max_duration_reached: 0
-// 10->11 cluster_1 upstream_cx_connect_attempts_exceeded: 0
-// 10->11 cluster_1 upstream_cx_destroy: 1
-// 10->11 cluster_1 upstream_cx_destroy_local: 1
-// 10->11 cluster_1 upstream_cx_destroy_remote: 0
-// 10->11 cluster_1 upstream_cx_destroy_with_active_rq: 0
-// 10->11 cluster_1 upstream_cx_destroy_local_with_active_rq: 0
-// 10->11 cluster_1 upstream_cx_destroy_remote_with_active_rq: 0
-// 10->11 cluster_1 upstream_cx_close_notify: 0
-// 10->11 cluster_1 upstream_cx_rx_bytes_total: 65
-// 10->11 cluster_1 upstream_cx_rx_bytes_buffered: 0
-// 10->11 cluster_1 upstream_cx_tx_bytes_total: 393
-// 10->11 cluster_1 upstream_cx_tx_bytes_buffered: 0
-// 10->11 cluster_1 upstream_cx_pool_overflow: 0
-// 10->11 cluster_1 upstream_cx_protocol_error: 1
-// 10->11 cluster_1 upstream_cx_max_requests: 2
-// 10->11 cluster_1 upstream_cx_none_healthy: 0
-// 10->11 cluster_1 upstream_rq_total: 2
-// 10->11 cluster_1 upstream_rq_active: 1
-// 10->11 cluster_1 upstream_rq_pending_total: 3
-// 10->11 cluster_1 upstream_rq_pending_overflow: 0
-// 10->11 cluster_1 upstream_rq_pending_failure_eject: 0
-// 10->11 cluster_1 upstream_rq_pending_active: 1
-// 10->11 cluster_1 upstream_rq_cancelled: 0
-// 10->11 cluster_1 upstream_rq_maintenance_mode: 0
-// 10->11 cluster_1 upstream_rq_timeout: 0
-// 10->11 cluster_1 upstream_rq_max_duration_reached: 0
-// 10->11 cluster_1 upstream_rq_per_try_timeout: 0
-// 10->11 cluster_1 upstream_rq_rx_reset: 0
-// 10->11 cluster_1 upstream_rq_tx_reset: 0
-// ---------- ^CHECKPOINT 11 : DOWNSTREAM RECEIVED RESPONSE  -------------
-// 11->12 aggregate_cluster cx_open: 0
-// 11->12 aggregate_cluster remaining_cx: 1
-// 11->12 aggregate_cluster upstream_cx_overflow: 0
-// 11->12 aggregate_cluster upstream_cx_total: 0
-// 11->12 aggregate_cluster upstream_cx_active: 0
-// 11->12 aggregate_cluster upstream_cx_http1_total: 0
-// 11->12 aggregate_cluster upstream_cx_http2_total: 0
-// 11->12 aggregate_cluster upstream_cx_http3_total: 0
-// 11->12 aggregate_cluster upstream_cx_connect_fail: 0
-// 11->12 aggregate_cluster upstream_cx_connect_timeout: 0
-// 11->12 aggregate_cluster upstream_cx_connect_with_0_rtt: 0
-// 11->12 aggregate_cluster upstream_cx_idle_timeout: 0
-// 11->12 aggregate_cluster upstream_cx_max_duration_reached: 0
-// 11->12 aggregate_cluster upstream_cx_connect_attempts_exceeded: 0
-// 11->12 aggregate_cluster upstream_cx_destroy: 0
-// 11->12 aggregate_cluster upstream_cx_destroy_local: 0
-// 11->12 aggregate_cluster upstream_cx_destroy_remote: 0
-// 11->12 aggregate_cluster upstream_cx_destroy_with_active_rq: 0
-// 11->12 aggregate_cluster upstream_cx_destroy_local_with_active_rq: 0
-// 11->12 aggregate_cluster upstream_cx_destroy_remote_with_active_rq: 0
-// 11->12 aggregate_cluster upstream_cx_close_notify: 0
-// 11->12 aggregate_cluster upstream_cx_rx_bytes_total: 0
-// 11->12 aggregate_cluster upstream_cx_rx_bytes_buffered: 0
-// 11->12 aggregate_cluster upstream_cx_tx_bytes_total: 0
-// 11->12 aggregate_cluster upstream_cx_tx_bytes_buffered: 0
-// 11->12 aggregate_cluster upstream_cx_pool_overflow: 0
-// 11->12 aggregate_cluster upstream_cx_protocol_error: 0
-// 11->12 aggregate_cluster upstream_cx_max_requests: 0
-// 11->12 aggregate_cluster upstream_cx_none_healthy: 0
-// 11->12 aggregate_cluster upstream_rq_total: 0
-// 11->12 aggregate_cluster upstream_rq_active: 0
-// 11->12 aggregate_cluster upstream_rq_pending_total: 0
-// 11->12 aggregate_cluster upstream_rq_pending_overflow: 0
-// 11->12 aggregate_cluster upstream_rq_pending_failure_eject: 0
-// 11->12 aggregate_cluster upstream_rq_pending_active: 0
-// 11->12 aggregate_cluster upstream_rq_cancelled: 0
-// 11->12 aggregate_cluster upstream_rq_maintenance_mode: 0
-// 11->12 aggregate_cluster upstream_rq_timeout: 0
-// 11->12 aggregate_cluster upstream_rq_max_duration_reached: 0
-// 11->12 aggregate_cluster upstream_rq_per_try_timeout: 0
-// 11->12 aggregate_cluster upstream_rq_rx_reset: 0
-// 11->12 aggregate_cluster upstream_rq_tx_reset: 0
-// 11->12 cluster_1 cx_open: 1
-// 11->12 cluster_1 remaining_cx: 0
-// 11->12 cluster_1 upstream_cx_overflow: 4
-// 11->12 cluster_1 upstream_cx_total: 2
-// 11->12 cluster_1 upstream_cx_active: 1
-// 11->12 cluster_1 upstream_cx_http1_total: 0
-// 11->12 cluster_1 upstream_cx_http2_total: 2
-// 11->12 cluster_1 upstream_cx_http3_total: 0
-// 11->12 cluster_1 upstream_cx_connect_fail: 0
-// 11->12 cluster_1 upstream_cx_connect_timeout: 0
-// 11->12 cluster_1 upstream_cx_connect_with_0_rtt: 0
-// 11->12 cluster_1 upstream_cx_idle_timeout: 0
-// 11->12 cluster_1 upstream_cx_max_duration_reached: 0
-// 11->12 cluster_1 upstream_cx_connect_attempts_exceeded: 0
-// 11->12 cluster_1 upstream_cx_destroy: 1
-// 11->12 cluster_1 upstream_cx_destroy_local: 1
-// 11->12 cluster_1 upstream_cx_destroy_remote: 0
-// 11->12 cluster_1 upstream_cx_destroy_with_active_rq: 0
-// 11->12 cluster_1 upstream_cx_destroy_local_with_active_rq: 0
-// 11->12 cluster_1 upstream_cx_destroy_remote_with_active_rq: 0
-// 11->12 cluster_1 upstream_cx_close_notify: 0
-// 11->12 cluster_1 upstream_cx_rx_bytes_total: 65
-// 11->12 cluster_1 upstream_cx_rx_bytes_buffered: 0
-// 11->12 cluster_1 upstream_cx_tx_bytes_total: 393
-// 11->12 cluster_1 upstream_cx_tx_bytes_buffered: 0
-// 11->12 cluster_1 upstream_cx_pool_overflow: 0
-// 11->12 cluster_1 upstream_cx_protocol_error: 1
-// 11->12 cluster_1 upstream_cx_max_requests: 2
-// 11->12 cluster_1 upstream_cx_none_healthy: 0
-// 11->12 cluster_1 upstream_rq_total: 2
-// 11->12 cluster_1 upstream_rq_active: 1
-// 11->12 cluster_1 upstream_rq_pending_total: 3
-// 11->12 cluster_1 upstream_rq_pending_overflow: 0
-// 11->12 cluster_1 upstream_rq_pending_failure_eject: 0
-// 11->12 cluster_1 upstream_rq_pending_active: 1
-// 11->12 cluster_1 upstream_rq_cancelled: 0
-// 11->12 cluster_1 upstream_rq_maintenance_mode: 0
-// 11->12 cluster_1 upstream_rq_timeout: 0
-// 11->12 cluster_1 upstream_rq_max_duration_reached: 0
-// 11->12 cluster_1 upstream_rq_per_try_timeout: 0
-// 11->12 cluster_1 upstream_rq_rx_reset: 0
-// 11->12 cluster_1 upstream_rq_tx_reset: 0
-// ---------- ^CHECKPOINT 12 : CLOSED UPSTREAM CONNECTION  -------------
-// BEFORE FAILURE TIME OUT aggregate_cluster cx_open: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster remaining_cx: 1
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_cx_overflow: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_cx_total: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_cx_active: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_cx_http1_total: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_cx_http2_total: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_cx_http3_total: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_cx_connect_fail: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_cx_connect_timeout: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_cx_connect_with_0_rtt: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_cx_idle_timeout: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_cx_max_duration_reached: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_cx_connect_attempts_exceeded: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_cx_destroy: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_cx_destroy_local: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_cx_destroy_remote: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_cx_destroy_with_active_rq: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_cx_destroy_local_with_active_rq: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_cx_destroy_remote_with_active_rq: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_cx_close_notify: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_cx_rx_bytes_total: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_cx_rx_bytes_buffered: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_cx_tx_bytes_total: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_cx_tx_bytes_buffered: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_cx_pool_overflow: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_cx_protocol_error: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_cx_max_requests: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_cx_none_healthy: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_rq_total: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_rq_active: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_rq_pending_total: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_rq_pending_overflow: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_rq_pending_failure_eject: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_rq_pending_active: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_rq_cancelled: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_rq_maintenance_mode: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_rq_timeout: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_rq_max_duration_reached: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_rq_per_try_timeout: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_rq_rx_reset: 0
-// BEFORE FAILURE TIME OUT aggregate_cluster upstream_rq_tx_reset: 0
-// BEFORE FAILURE TIME OUT cluster_1 cx_open: 1
-// BEFORE FAILURE TIME OUT cluster_1 remaining_cx: 0
-// BEFORE FAILURE TIME OUT cluster_1 upstream_cx_overflow: 4
-// BEFORE FAILURE TIME OUT cluster_1 upstream_cx_total: 2
-// BEFORE FAILURE TIME OUT cluster_1 upstream_cx_active: 1
-// BEFORE FAILURE TIME OUT cluster_1 upstream_cx_http1_total: 0
-// BEFORE FAILURE TIME OUT cluster_1 upstream_cx_http2_total: 2
-// BEFORE FAILURE TIME OUT cluster_1 upstream_cx_http3_total: 0
-// BEFORE FAILURE TIME OUT cluster_1 upstream_cx_connect_fail: 0
-// BEFORE FAILURE TIME OUT cluster_1 upstream_cx_connect_timeout: 0
-// BEFORE FAILURE TIME OUT cluster_1 upstream_cx_connect_with_0_rtt: 0
-// BEFORE FAILURE TIME OUT cluster_1 upstream_cx_idle_timeout: 0
-// BEFORE FAILURE TIME OUT cluster_1 upstream_cx_max_duration_reached: 0
-// BEFORE FAILURE TIME OUT cluster_1 upstream_cx_connect_attempts_exceeded: 0
-// BEFORE FAILURE TIME OUT cluster_1 upstream_cx_destroy: 1
-// BEFORE FAILURE TIME OUT cluster_1 upstream_cx_destroy_local: 1
-// BEFORE FAILURE TIME OUT cluster_1 upstream_cx_destroy_remote: 0
-// BEFORE FAILURE TIME OUT cluster_1 upstream_cx_destroy_with_active_rq: 0
-// BEFORE FAILURE TIME OUT cluster_1 upstream_cx_destroy_local_with_active_rq: 0
-// BEFORE FAILURE TIME OUT cluster_1 upstream_cx_destroy_remote_with_active_rq: 0
-// BEFORE FAILURE TIME OUT cluster_1 upstream_cx_close_notify: 0
-// BEFORE FAILURE TIME OUT cluster_1 upstream_cx_rx_bytes_total: 65
-// BEFORE FAILURE TIME OUT cluster_1 upstream_cx_rx_bytes_buffered: 0
-// BEFORE FAILURE TIME OUT cluster_1 upstream_cx_tx_bytes_total: 393
-// BEFORE FAILURE TIME OUT cluster_1 upstream_cx_tx_bytes_buffered: 0
-// BEFORE FAILURE TIME OUT cluster_1 upstream_cx_pool_overflow: 0
-// BEFORE FAILURE TIME OUT cluster_1 upstream_cx_protocol_error: 1
-// BEFORE FAILURE TIME OUT cluster_1 upstream_cx_max_requests: 2
-// BEFORE FAILURE TIME OUT cluster_1 upstream_cx_none_healthy: 0
-// BEFORE FAILURE TIME OUT cluster_1 upstream_rq_total: 2
-// BEFORE FAILURE TIME OUT cluster_1 upstream_rq_active: 1
-// BEFORE FAILURE TIME OUT cluster_1 upstream_rq_pending_total: 3
-// BEFORE FAILURE TIME OUT cluster_1 upstream_rq_pending_overflow: 0
-// BEFORE FAILURE TIME OUT cluster_1 upstream_rq_pending_failure_eject: 0
-// BEFORE FAILURE TIME OUT cluster_1 upstream_rq_pending_active: 1
-// BEFORE FAILURE TIME OUT cluster_1 upstream_rq_cancelled: 0
-// BEFORE FAILURE TIME OUT cluster_1 upstream_rq_maintenance_mode: 0
-// BEFORE FAILURE TIME OUT cluster_1 upstream_rq_timeout: 0
-// BEFORE FAILURE TIME OUT cluster_1 upstream_rq_max_duration_reached: 0
-// BEFORE FAILURE TIME OUT cluster_1 upstream_rq_per_try_timeout: 0
-// BEFORE FAILURE TIME OUT cluster_1 upstream_rq_rx_reset: 0
-// BEFORE FAILURE TIME OUT cluster_1 upstream_rq_tx_reset: 0
-// ./test/integration/server.h:462: Failure
-// Value of: TestUtility::waitForGaugeEq(statStore(), name, value, time_system_, timeout)
-//   Actual: false (timed out waiting for cluster.cluster_1.circuit_breakers.default.cx_open to be 0, current value 1)
-// Expected: true
-// Stack trace:
-//   0x353d27f: Envoy::IntegrationTestServer::waitForGaugeEq()
-//   0x2b5f162: Envoy::(anonymous namespace)::AggregateIntegrationTest_NEWCircuitBreakerMaxConnectionsTest_Test::TestBody()
-//   0x743281b: testing::internal::HandleSehExceptionsInMethodIfSupported<>()
-//   0x74223cd: testing::internal::HandleExceptionsInMethodIfSupported<>()
-//   0x740ac43: testing::Test::Run()
-//   0x740b80a: testing::TestInfo::Run()
-// ... Google Test internal frames ...
-
-// ---------- ^CHECKPOINT 13 : CIRCUIT BREAKER RESET  -------------
-// BEFORE CLEANUP aggregate_cluster cx_open: 0
-// BEFORE CLEANUP aggregate_cluster remaining_cx: 1
-// BEFORE CLEANUP aggregate_cluster upstream_cx_overflow: 0
-// BEFORE CLEANUP aggregate_cluster upstream_cx_total: 0
-// BEFORE CLEANUP aggregate_cluster upstream_cx_active: 0
-// BEFORE CLEANUP aggregate_cluster upstream_cx_http1_total: 0
-// BEFORE CLEANUP aggregate_cluster upstream_cx_http2_total: 0
-// BEFORE CLEANUP aggregate_cluster upstream_cx_http3_total: 0
-// BEFORE CLEANUP aggregate_cluster upstream_cx_connect_fail: 0
-// BEFORE CLEANUP aggregate_cluster upstream_cx_connect_timeout: 0
-// BEFORE CLEANUP aggregate_cluster upstream_cx_connect_with_0_rtt: 0
-// BEFORE CLEANUP aggregate_cluster upstream_cx_idle_timeout: 0
-// BEFORE CLEANUP aggregate_cluster upstream_cx_max_duration_reached: 0
-// BEFORE CLEANUP aggregate_cluster upstream_cx_connect_attempts_exceeded: 0
-// BEFORE CLEANUP aggregate_cluster upstream_cx_destroy: 0
-// BEFORE CLEANUP aggregate_cluster upstream_cx_destroy_local: 0
-// BEFORE CLEANUP aggregate_cluster upstream_cx_destroy_remote: 0
-// BEFORE CLEANUP aggregate_cluster upstream_cx_destroy_with_active_rq: 0
-// BEFORE CLEANUP aggregate_cluster upstream_cx_destroy_local_with_active_rq: 0
-// BEFORE CLEANUP aggregate_cluster upstream_cx_destroy_remote_with_active_rq: 0
-// BEFORE CLEANUP aggregate_cluster upstream_cx_close_notify: 0
-// BEFORE CLEANUP aggregate_cluster upstream_cx_rx_bytes_total: 0
-// BEFORE CLEANUP aggregate_cluster upstream_cx_rx_bytes_buffered: 0
-// BEFORE CLEANUP aggregate_cluster upstream_cx_tx_bytes_total: 0
-// BEFORE CLEANUP aggregate_cluster upstream_cx_tx_bytes_buffered: 0
-// BEFORE CLEANUP aggregate_cluster upstream_cx_pool_overflow: 0
-// BEFORE CLEANUP aggregate_cluster upstream_cx_protocol_error: 0
-// BEFORE CLEANUP aggregate_cluster upstream_cx_max_requests: 0
-// BEFORE CLEANUP aggregate_cluster upstream_cx_none_healthy: 0
-// BEFORE CLEANUP aggregate_cluster upstream_rq_total: 0
-// BEFORE CLEANUP aggregate_cluster upstream_rq_active: 0
-// BEFORE CLEANUP aggregate_cluster upstream_rq_pending_total: 0
-// BEFORE CLEANUP aggregate_cluster upstream_rq_pending_overflow: 0
-// BEFORE CLEANUP aggregate_cluster upstream_rq_pending_failure_eject: 0
-// BEFORE CLEANUP aggregate_cluster upstream_rq_pending_active: 0
-// BEFORE CLEANUP aggregate_cluster upstream_rq_cancelled: 0
-// BEFORE CLEANUP aggregate_cluster upstream_rq_maintenance_mode: 0
-// BEFORE CLEANUP aggregate_cluster upstream_rq_timeout: 1
-// BEFORE CLEANUP aggregate_cluster upstream_rq_max_duration_reached: 0
-// BEFORE CLEANUP aggregate_cluster upstream_rq_per_try_timeout: 0
-// BEFORE CLEANUP aggregate_cluster upstream_rq_rx_reset: 0
-// BEFORE CLEANUP aggregate_cluster upstream_rq_tx_reset: 0
-// BEFORE CLEANUP cluster_1 cx_open: 0
-// BEFORE CLEANUP cluster_1 remaining_cx: 1
-// BEFORE CLEANUP cluster_1 upstream_cx_overflow: 4
-// BEFORE CLEANUP cluster_1 upstream_cx_total: 3
-// BEFORE CLEANUP cluster_1 upstream_cx_active: 0
-// BEFORE CLEANUP cluster_1 upstream_cx_http1_total: 0
-// BEFORE CLEANUP cluster_1 upstream_cx_http2_total: 3
-// BEFORE CLEANUP cluster_1 upstream_cx_http3_total: 0
-// BEFORE CLEANUP cluster_1 upstream_cx_connect_fail: 0
-// BEFORE CLEANUP cluster_1 upstream_cx_connect_timeout: 0
-// BEFORE CLEANUP cluster_1 upstream_cx_connect_with_0_rtt: 0
-// BEFORE CLEANUP cluster_1 upstream_cx_idle_timeout: 0
-// BEFORE CLEANUP cluster_1 upstream_cx_max_duration_reached: 0
-// BEFORE CLEANUP cluster_1 upstream_cx_connect_attempts_exceeded: 0
-// BEFORE CLEANUP cluster_1 upstream_cx_destroy: 3
-// BEFORE CLEANUP cluster_1 upstream_cx_destroy_local: 3
-// BEFORE CLEANUP cluster_1 upstream_cx_destroy_remote: 0
-// BEFORE CLEANUP cluster_1 upstream_cx_destroy_with_active_rq: 0
-// BEFORE CLEANUP cluster_1 upstream_cx_destroy_local_with_active_rq: 0
-// BEFORE CLEANUP cluster_1 upstream_cx_destroy_remote_with_active_rq: 0
-// BEFORE CLEANUP cluster_1 upstream_cx_close_notify: 0
-// BEFORE CLEANUP cluster_1 upstream_cx_rx_bytes_total: 65
-// BEFORE CLEANUP cluster_1 upstream_cx_rx_bytes_buffered: 0
-// BEFORE CLEANUP cluster_1 upstream_cx_tx_bytes_total: 580
-// BEFORE CLEANUP cluster_1 upstream_cx_tx_bytes_buffered: 0
-// BEFORE CLEANUP cluster_1 upstream_cx_pool_overflow: 0
-// BEFORE CLEANUP cluster_1 upstream_cx_protocol_error: 1
-// BEFORE CLEANUP cluster_1 upstream_cx_max_requests: 3
-// BEFORE CLEANUP cluster_1 upstream_cx_none_healthy: 0
-// BEFORE CLEANUP cluster_1 upstream_rq_total: 3
-// BEFORE CLEANUP cluster_1 upstream_rq_active: 0
-// BEFORE CLEANUP cluster_1 upstream_rq_pending_total: 3
-// BEFORE CLEANUP cluster_1 upstream_rq_pending_overflow: 0
-// BEFORE CLEANUP cluster_1 upstream_rq_pending_failure_eject: 0
-// BEFORE CLEANUP cluster_1 upstream_rq_pending_active: 0
-// BEFORE CLEANUP cluster_1 upstream_rq_cancelled: 0
-// BEFORE CLEANUP cluster_1 upstream_rq_maintenance_mode: 0
-// BEFORE CLEANUP cluster_1 upstream_rq_timeout: 1
-// BEFORE CLEANUP cluster_1 upstream_rq_max_duration_reached: 0
-// BEFORE CLEANUP cluster_1 upstream_rq_per_try_timeout: 0
-// BEFORE CLEANUP cluster_1 upstream_rq_rx_reset: 0
-// BEFORE CLEANUP cluster_1 upstream_rq_tx_reset: 2
-// ---------- 99 TEST END
