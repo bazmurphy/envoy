@@ -442,7 +442,7 @@ TEST_P(AggregateIntegrationTest, NEWCircuitBreakerMaxConnectionsTest) {
 
     envoy::extensions::upstreams::http::v3::HttpProtocolOptions http_protocol_options;
     // set max_requests_per_connection to 1 so that each request makes a new connection
-    http_protocol_options.mutable_common_http_protocol_options()->mutable_max_requests_per_connection()->set_value(1);
+    // http_protocol_options.mutable_common_http_protocol_options()->mutable_max_requests_per_connection()->set_value(1); // !!!!!!!!!!!!!!!! PLAYING WITH THIS AT THE MOMENT
     // set max_concurrent_streams to 1 so that a single stream will saturate the connection
     http_protocol_options.mutable_explicit_http_config()->mutable_http2_protocol_options()->mutable_max_concurrent_streams()->set_value(1);
     (*aggregate_cluster->mutable_typed_extension_protocol_options())
@@ -460,11 +460,11 @@ TEST_P(AggregateIntegrationTest, NEWCircuitBreakerMaxConnectionsTest) {
   cluster1_circuit_breakers_threshold_default->mutable_max_requests()->set_value(1000000000); // set this high
   cluster1_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1000000000); // set this high
   cluster1_circuit_breakers_threshold_default->mutable_max_connection_pools()->set_value(1000000000); // set this high
-  cluster1_circuit_breakers_threshold_default->set_track_remaining(true);
+  cluster1_circuit_breakers_threshold_default->set_track_remaining(true); 
 
   envoy::extensions::upstreams::http::v3::HttpProtocolOptions http_protocol_options;
   // set max_requests_per_connection to 1 so that each request makes a new connection
-  http_protocol_options.mutable_common_http_protocol_options()->mutable_max_requests_per_connection()->set_value(1);
+  // http_protocol_options.mutable_common_http_protocol_options()->mutable_max_requests_per_connection()->set_value(1);  // !!!!!!!!!!!!!!!! PLAYING WITH THIS AT THE MOMENT
   // set max_concurrent_streams to 1 so that a single stream will saturate the connection
   http_protocol_options.mutable_explicit_http_config()->mutable_http2_protocol_options()->mutable_max_concurrent_streams()->set_value(1);
   (*cluster1_.mutable_typed_extension_protocol_options())
