@@ -519,6 +519,8 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerMaxRetriesTest) {
   // OTHERWISE THIS REQUEST WOULD BE AUTOREJECTED IF THE /aggregatecluster route max_retries circuit breaker affected the underlying cluster1
   upstream_request_->encodeHeaders(default_response_headers_, true);
 
+  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow", 0); // unaffected
+
   // complete request/response3 (/cluster1)
   ASSERT_TRUE(cluster1_response->waitForEndStream());
   EXPECT_EQ("200", cluster1_response->headers().getStatusValue());
