@@ -619,6 +619,8 @@ TEST_P(AggregateIntegrationTest, NEWCircuitBreakerMaxConnectionsTest) {
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.cx_open", 1); // the cluster1 circuit breaker is NOW triggered
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_cx", 0); // no more connections are allowed
 
+  test_server_->waitForGaugeEq("cluster.cluster_1.upstream_rq_active", 1); // the first request is in an active state
+
   printStatsForMaxConnections("04->05");
   
   std::cout << "---------- ^CHECKPOINT 05 : MAX CONNECTIONS CIRCUIT BREAKER TRIPPED -------------" << std::endl;
@@ -672,7 +674,8 @@ TEST_P(AggregateIntegrationTest, NEWCircuitBreakerMaxConnectionsTest) {
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.cx_open", 1); // the cluster1 circuit breaker is STILL triggered
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_cx", 0); // connections are STILL NOT allowed
   test_server_->waitForCounterEq("cluster.cluster_1.upstream_cx_overflow", 2); // cluster1 overflow was incremented AGAIN
-  test_server_->waitForGaugeEq("cluster.cluster_1.upstream_rq_pending_active", 2); // the third request is in a pending state
+
+  test_server_->waitForGaugeEq("cluster.cluster_1.upstream_rq_pending_active", 2); // the third request is also in a pending state
 
   printStatsForMaxConnections("08->09");
   
@@ -734,7 +737,7 @@ TEST_P(AggregateIntegrationTest, NEWCircuitBreakerMaxConnectionsTest) {
   test_server_->waitForCounterEq("cluster.cluster_1.upstream_cx_overflow", 2); // the total circuit breaker max connections overflow was 2
   test_server_->waitForCounterEq("cluster.cluster_1.upstream_cx_total", 1); // only 1 total connection was established
   test_server_->waitForCounterEq("cluster.cluster_1.upstream_cx_http2_total", 1); // only 1 http2 connection was established
-  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_pending_total", 3); // the three requests stayed in a pending state (as none were completed)
+  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_total", 1); // only the first request reached the upstream
 
   std::cout << "---------- ^CHECKPOINT 13 : CLUSTER1 CIRCUIT BREAKER RESET  -------------" << std::endl;
 
@@ -749,3 +752,95 @@ TEST_P(AggregateIntegrationTest, NEWCircuitBreakerMaxConnectionsTest) {
 
 } // namespace
 } // namespace Envoy
+
+// LOG:
+// AFTER CLEANUP aggregate_cluster cx_open: 0
+// AFTER CLEANUP aggregate_cluster remaining_cx: 1
+// AFTER CLEANUP aggregate_cluster upstream_cx_overflow: 0
+// AFTER CLEANUP aggregate_cluster rq_pending_open: 0
+// AFTER CLEANUP aggregate_cluster remaining_pending: 1000000000
+// AFTER CLEANUP aggregate_cluster upstream_rq_pending_overflow: 0
+// AFTER CLEANUP aggregate_cluster upstream_cx_total: 0
+// AFTER CLEANUP aggregate_cluster upstream_cx_active: 0
+// AFTER CLEANUP aggregate_cluster upstream_cx_http1_total: 0
+// AFTER CLEANUP aggregate_cluster upstream_cx_http2_total: 0
+// AFTER CLEANUP aggregate_cluster upstream_cx_http3_total: 0
+// AFTER CLEANUP aggregate_cluster upstream_cx_connect_fail: 0
+// AFTER CLEANUP aggregate_cluster upstream_cx_connect_timeout: 0
+// AFTER CLEANUP aggregate_cluster upstream_cx_connect_with_0_rtt: 0
+// AFTER CLEANUP aggregate_cluster upstream_cx_idle_timeout: 0
+// AFTER CLEANUP aggregate_cluster upstream_cx_max_duration_reached: 0
+// AFTER CLEANUP aggregate_cluster upstream_cx_connect_attempts_exceeded: 0
+// AFTER CLEANUP aggregate_cluster upstream_cx_destroy: 0
+// AFTER CLEANUP aggregate_cluster upstream_cx_destroy_local: 0
+// AFTER CLEANUP aggregate_cluster upstream_cx_destroy_remote: 0
+// AFTER CLEANUP aggregate_cluster upstream_cx_destroy_with_active_rq: 0
+// AFTER CLEANUP aggregate_cluster upstream_cx_destroy_local_with_active_rq: 0
+// AFTER CLEANUP aggregate_cluster upstream_cx_destroy_remote_with_active_rq: 0
+// AFTER CLEANUP aggregate_cluster upstream_cx_close_notify: 0
+// AFTER CLEANUP aggregate_cluster upstream_cx_rx_bytes_total: 0
+// AFTER CLEANUP aggregate_cluster upstream_cx_rx_bytes_buffered: 0
+// AFTER CLEANUP aggregate_cluster upstream_cx_tx_bytes_total: 0
+// AFTER CLEANUP aggregate_cluster upstream_cx_tx_bytes_buffered: 0
+// AFTER CLEANUP aggregate_cluster upstream_cx_pool_overflow: 0
+// AFTER CLEANUP aggregate_cluster upstream_cx_protocol_error: 0
+// AFTER CLEANUP aggregate_cluster upstream_cx_max_requests: 0
+// AFTER CLEANUP aggregate_cluster upstream_cx_none_healthy: 0
+// AFTER CLEANUP aggregate_cluster upstream_rq_total: 0
+// AFTER CLEANUP aggregate_cluster upstream_rq_active: 0
+// AFTER CLEANUP aggregate_cluster upstream_rq_pending_total: 0
+// AFTER CLEANUP aggregate_cluster upstream_rq_pending_overflow: 0
+// AFTER CLEANUP aggregate_cluster upstream_rq_pending_failure_eject: 0
+// AFTER CLEANUP aggregate_cluster upstream_rq_pending_active: 0
+// AFTER CLEANUP aggregate_cluster upstream_rq_cancelled: 0
+// AFTER CLEANUP aggregate_cluster upstream_rq_maintenance_mode: 0
+// AFTER CLEANUP aggregate_cluster upstream_rq_timeout: 0
+// AFTER CLEANUP aggregate_cluster upstream_rq_max_duration_reached: 0
+// AFTER CLEANUP aggregate_cluster upstream_rq_per_try_timeout: 0
+// AFTER CLEANUP aggregate_cluster upstream_rq_rx_reset: 0
+// AFTER CLEANUP aggregate_cluster upstream_rq_tx_reset: 0
+// AFTER CLEANUP cluster_1 cx_open: 0
+// AFTER CLEANUP cluster_1 remaining_cx: 1
+// AFTER CLEANUP cluster_1 upstream_cx_overflow: 2 <-- 2 connections overflowed
+// AFTER CLEANUP cluster_1 rq_pending_open: 0
+// AFTER CLEANUP cluster_1 remaining_pending: 1000000000
+// AFTER CLEANUP cluster_1 upstream_rq_pending_overflow: 0
+// AFTER CLEANUP cluster_1 upstream_cx_total: 1
+// AFTER CLEANUP cluster_1 upstream_cx_active: 0
+// AFTER CLEANUP cluster_1 upstream_cx_http1_total: 0
+// AFTER CLEANUP cluster_1 upstream_cx_http2_total: 1
+// AFTER CLEANUP cluster_1 upstream_cx_http3_total: 0
+// AFTER CLEANUP cluster_1 upstream_cx_connect_fail: 0
+// AFTER CLEANUP cluster_1 upstream_cx_connect_timeout: 0
+// AFTER CLEANUP cluster_1 upstream_cx_connect_with_0_rtt: 0
+// AFTER CLEANUP cluster_1 upstream_cx_idle_timeout: 0
+// AFTER CLEANUP cluster_1 upstream_cx_max_duration_reached: 0
+// AFTER CLEANUP cluster_1 upstream_cx_connect_attempts_exceeded: 0
+// AFTER CLEANUP cluster_1 upstream_cx_destroy: 1
+// AFTER CLEANUP cluster_1 upstream_cx_destroy_local: 1
+// AFTER CLEANUP cluster_1 upstream_cx_destroy_remote: 0
+// AFTER CLEANUP cluster_1 upstream_cx_destroy_with_active_rq: 0
+// AFTER CLEANUP cluster_1 upstream_cx_destroy_local_with_active_rq: 0
+// AFTER CLEANUP cluster_1 upstream_cx_destroy_remote_with_active_rq: 0
+// AFTER CLEANUP cluster_1 upstream_cx_close_notify: 0
+// AFTER CLEANUP cluster_1 upstream_cx_rx_bytes_total: 55
+// AFTER CLEANUP cluster_1 upstream_cx_rx_bytes_buffered: 0
+// AFTER CLEANUP cluster_1 upstream_cx_tx_bytes_total: 201
+// AFTER CLEANUP cluster_1 upstream_cx_tx_bytes_buffered: 0
+// AFTER CLEANUP cluster_1 upstream_cx_pool_overflow: 0
+// AFTER CLEANUP cluster_1 upstream_cx_protocol_error: 0
+// AFTER CLEANUP cluster_1 upstream_cx_max_requests: 1
+// AFTER CLEANUP cluster_1 upstream_cx_none_healthy: 0
+// AFTER CLEANUP cluster_1 upstream_rq_total: 1 <-- 1 request reached the upstream in total
+// AFTER CLEANUP cluster_1 upstream_rq_active: 0
+// AFTER CLEANUP cluster_1 upstream_rq_pending_total: 3
+// AFTER CLEANUP cluster_1 upstream_rq_pending_overflow: 0
+// AFTER CLEANUP cluster_1 upstream_rq_pending_failure_eject: 0
+// AFTER CLEANUP cluster_1 upstream_rq_pending_active: 0
+// AFTER CLEANUP cluster_1 upstream_rq_cancelled: 2
+// AFTER CLEANUP cluster_1 upstream_rq_maintenance_mode: 0
+// AFTER CLEANUP cluster_1 upstream_rq_timeout: 0
+// AFTER CLEANUP cluster_1 upstream_rq_max_duration_reached: 0
+// AFTER CLEANUP cluster_1 upstream_rq_per_try_timeout: 0
+// AFTER CLEANUP cluster_1 upstream_rq_rx_reset: 0
+// AFTER CLEANUP cluster_1 upstream_rq_tx_reset: 1
