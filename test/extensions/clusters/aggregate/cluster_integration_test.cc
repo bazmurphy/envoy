@@ -31,8 +31,7 @@ const char SecondClusterName[] = "cluster_2";
 // Index in fake_upstreams_
 const int FirstUpstreamIndex = 2;
 const int SecondUpstreamIndex = 3;
-
-struct Thresholds {
+struct CircuitBreakThresholds {
   uint32_t max_connections = 1024;
   uint32_t max_requests = 1024;
   uint32_t max_pending_requests = 1024;
@@ -190,23 +189,24 @@ public:
   }
 
   void setCircuitBreakerLimits(envoy::config::cluster::v3::Cluster& cluster,
-                               const Thresholds& thresholds) {
+                               const CircuitBreakThresholds& CircuitBreakThresholds) {
     auto* cluster_circuit_breakers = cluster.mutable_circuit_breakers();
 
-    auto* cluster_circuit_breakers_threshold_default = cluster_circuit_breakers->add_thresholds();
+    auto* cluster_circuit_breakers_threshold_default =
+        cluster_circuit_breakers->add_CircuitBreakThresholds();
     cluster_circuit_breakers_threshold_default->set_priority(
         envoy::config::core::v3::RoutingPriority::DEFAULT);
 
     cluster_circuit_breakers_threshold_default->mutable_max_connections()->set_value(
-        thresholds.max_connections);
+        CircuitBreakThresholds.max_connections);
     cluster_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(
-        thresholds.max_pending_requests);
+        CircuitBreakThresholds.max_pending_requests);
     cluster_circuit_breakers_threshold_default->mutable_max_requests()->set_value(
-        thresholds.max_requests);
+        CircuitBreakThresholds.max_requests);
     cluster_circuit_breakers_threshold_default->mutable_max_retries()->set_value(
-        thresholds.max_retries);
+        CircuitBreakThresholds.max_retries);
     cluster_circuit_breakers_threshold_default->mutable_max_connection_pools()->set_value(
-        thresholds.max_connection_pools);
+        CircuitBreakThresholds.max_connection_pools);
     cluster_circuit_breakers_threshold_default->set_track_remaining(true);
   }
 
@@ -358,8 +358,8 @@ TEST_P(AggregateIntegrationTest, PreviousPrioritiesRetryPredicate) {
   cleanupUpstreamAndDownstream();
 }
 
+// Test description
 TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnections) {
-  // make the downstream client use http2
   setDownstreamProtocol(Http::CodecType::HTTP2);
 
   config_helper_.addConfigModifier([this](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
@@ -367,13 +367,13 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnections) {
     auto* aggregate_cluster = static_resources->mutable_clusters(1);
 
     makeAggregateClustersListHaveOnlyOneCluster(*aggregate_cluster);
-    setCircuitBreakerLimits(*aggregate_cluster, Thresholds{.max_connections = 1});
+    setCircuitBreakerLimits(*aggregate_cluster, CircuitBreakThresholds{.max_connections = 1});
     setMaxConcurrentStreams(*aggregate_cluster, 1U);
   });
 
   initialize();
 
-  setCircuitBreakerLimits(cluster1_, Thresholds{.max_connections = 1});
+  setCircuitBreakerLimits(cluster1_, CircuitBreakThresholds{.max_connections = 1});
   setMaxConcurrentStreams(cluster1_, 1U);
 
   EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "55", {}, {}, {}));
@@ -501,12 +501,12 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRequests) {
     auto* aggregate_cluster = static_resources->mutable_clusters(1);
 
     makeAggregateClustersListHaveOnlyOneCluster(*aggregate_cluster);
-    setCircuitBreakerLimits(*aggregate_cluster, Thresholds{.max_requests = 1});
+    setCircuitBreakerLimits(*aggregate_cluster, CircuitBreakThresholds{.max_requests = 1});
   });
 
   initialize();
 
-  setCircuitBreakerLimits(cluster1_, Thresholds{.max_requests = 1});
+  setCircuitBreakerLimits(cluster1_, CircuitBreakThresholds{.max_requests = 1});
 
   EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "55", {}, {}, {}));
   sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster,
@@ -634,14 +634,15 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
         static_resources->mutable_clusters(1); // use name of the aggregate cluster
 
     makeAggregateClustersListHaveOnlyOneCluster(*aggregate_cluster);
-    setCircuitBreakerLimits(*aggregate_cluster,
-                            Thresholds{.max_connections = 1, .max_pending_requests = 1});
+    setCircuitBreakerLimits(*aggregate_cluster, CircuitBreakThresholds{.max_connections = 1,
+                                                                       .max_pending_requests = 1});
     setMaxConcurrentStreams(*aggregate_cluster, 1U);
   });
 
   initialize();
 
-  setCircuitBreakerLimits(cluster1_, Thresholds{.max_connections = 1, .max_pending_requests = 1});
+  setCircuitBreakerLimits(cluster1_,
+                          CircuitBreakThresholds{.max_connections = 1, .max_pending_requests = 1});
   setMaxConcurrentStreams(cluster1_, 1U);
 
   EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "55", {}, {}, {}));
@@ -805,12 +806,12 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerMaxRetriesTest) {
         static_resources->mutable_clusters(1); // use name of the aggregate cluster
 
     makeAggregateClustersListHaveOnlyOneCluster(*aggregate_cluster);
-    setCircuitBreakerLimits(*aggregate_cluster, Thresholds{.max_retries = 1});
+    setCircuitBreakerLimits(*aggregate_cluster, CircuitBreakThresholds{.max_retries = 1});
   });
 
   initialize();
 
-  setCircuitBreakerLimits(cluster1_, Thresholds{.max_retries = 1});
+  setCircuitBreakerLimits(cluster1_, CircuitBreakThresholds{.max_retries = 1});
 
   // update cluster1 via xDS
   EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "55", {}, {}, {}));
