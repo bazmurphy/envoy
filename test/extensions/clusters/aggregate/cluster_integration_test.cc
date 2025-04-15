@@ -364,8 +364,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnections) {
 
   config_helper_.addConfigModifier([this](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
     auto* static_resources = bootstrap.mutable_static_resources();
-    auto* aggregate_cluster =
-        static_resources->mutable_clusters(1); // use name of the aggregate cluster
+    auto* aggregate_cluster = static_resources->mutable_clusters(1);
 
     makeAggregateClustersListHaveOnlyOneCluster(*aggregate_cluster);
     setCircuitBreakerLimits(*aggregate_cluster, Thresholds{.max_connections = 1});
@@ -725,7 +724,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
 }
 
 TEST_P(AggregateIntegrationTest, CircuitBreakerMaxRetriesTest) {
-  
+
   setDownstreamProtocol(Http::CodecType::HTTP2);
 
   config_helper_.addConfigModifier([this](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
@@ -768,11 +767,14 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerMaxRetriesTest) {
   test_server_->waitForGaugeEq("cluster_manager.active_clusters", 3);
 
   // confirm we are in the default state for both circuit breakers
+  // aggregate_cluster
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open",
                                0);
   test_server_->waitForGaugeEq(
       "cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 1);
   test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow", 0);
+
+  // cluster_1
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open", 0);
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries", 1);
   test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow", 0);
@@ -801,12 +803,15 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerMaxRetriesTest) {
   // upstream_request_ will get overwritten
   auto& first_upstream_request_retry = *upstream_request_;
 
+  // aggregate_cluster
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open",
                                1); // !! aggregate cluster circuit breaker is triggered
   test_server_->waitForGaugeEq(
       "cluster.aggregate_cluster.circuit_breakers.default.remaining_retries",
       0); // no more retries allowed
   test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow", 0);
+
+  // cluster_1
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open",
                                0); // unaffected
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries",
@@ -828,12 +833,15 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerMaxRetriesTest) {
   // retry
   upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, true);
 
+  // aggregate_cluster
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open",
                                1); // persisting
   test_server_->waitForGaugeEq(
       "cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 0); // persisting
   test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow",
                                  1); // 1 overflow on the aggregate cluster circuit breaker
+
+  // cluster_1
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open",
                                0); // unaffected
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries",
@@ -857,6 +865,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerMaxRetriesTest) {
   // automatic retry]
   waitForNextUpstreamRequest(FirstUpstreamIndex);
 
+  // aggregate_cluster
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open",
                                1); // persisting
   test_server_->waitForGaugeEq(
@@ -864,6 +873,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerMaxRetriesTest) {
   test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow",
                                  1); // persisting
 
+  // cluster_1
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open",
                                1); // cluster1 circuit breaker now triggered (but is separate
                                    // from the aggregate cluster circuit breaker)
@@ -901,6 +911,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerMaxRetriesTest) {
             aggregate_cluster_response2->headers()
                 .getStatusValue()); // this was from the auto - rejection
 
+  // aggregate_cluster
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open",
                                0); // returned to its initial state
   test_server_->waitForGaugeEq(
@@ -908,6 +919,8 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerMaxRetriesTest) {
       1); // returned to its initial state
   test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow",
                                  1); // overflowed 1 time
+
+  // cluster_1
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open",
                                0); // returned to its initial state
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries",
