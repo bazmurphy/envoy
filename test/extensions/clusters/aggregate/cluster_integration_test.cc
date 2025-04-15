@@ -189,7 +189,7 @@ public:
   }
 
   void setCircuitBreakerLimits(envoy::config::cluster::v3::Cluster& cluster,
-                               const CircuitBreakerLimits& thresholds) {
+                               const CircuitBreakerLimits& limits) {
     auto* cluster_circuit_breakers = cluster.mutable_circuit_breakers();
 
     auto* cluster_circuit_breakers_threshold_default = cluster_circuit_breakers->add_thresholds();
@@ -197,15 +197,15 @@ public:
         envoy::config::core::v3::RoutingPriority::DEFAULT);
 
     cluster_circuit_breakers_threshold_default->mutable_max_connections()->set_value(
-        thresholds.max_connections);
+        limits.max_connections);
     cluster_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(
-        thresholds.max_pending_requests);
+        limits.max_pending_requests);
     cluster_circuit_breakers_threshold_default->mutable_max_requests()->set_value(
-        thresholds.max_requests);
+        limits.max_requests);
     cluster_circuit_breakers_threshold_default->mutable_max_retries()->set_value(
-        thresholds.max_retries);
+        limits.max_retries);
     cluster_circuit_breakers_threshold_default->mutable_max_connection_pools()->set_value(
-        thresholds.max_connection_pools);
+        limits.max_connection_pools);
     cluster_circuit_breakers_threshold_default->set_track_remaining(true);
   }
 
