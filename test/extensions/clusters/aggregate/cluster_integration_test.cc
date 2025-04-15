@@ -221,7 +221,7 @@ public:
             .PackFrom(http_protocol_options);
   }
 
-  // rename this later
+  // TODO: rename this later
   void makeAggregateClustersListHaveOnlyOneCluster(
       envoy::config::cluster::v3::Cluster& aggregate_cluster) {
     auto* aggregate_cluster_type = aggregate_cluster.mutable_cluster_type();
@@ -360,6 +360,7 @@ TEST_P(AggregateIntegrationTest, PreviousPrioritiesRetryPredicate) {
 
 // TODO: Tests max_connections circuit breaking behaviour :
 // the cb only trigger for underlying cluster and not the aggregate_cluster
+// "...the aggregate cluster only affects the circuit breaker on the underlying cluster"
 TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnections) {
   setDownstreamProtocol(Http::CodecType::HTTP2);
 
@@ -435,11 +436,14 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnections) {
   test_server_->waitForCounterEq("cluster.cluster_1.upstream_cx_overflow", 1);
 
   // send a 3rd request directly to cluster1
+  // TODO: explain why we need to send this request
+  // TODO: to show that the circuit breaker on cluster_1 are used by both the cluster_1 and
+  // aggregate_cluster.
   auto cluster1_response1 = codec_client_->makeHeaderOnlyRequest(Http::TestRequestHeaderMapImpl{
       {":method", "GET"}, {":path", "/cluster1"}, {":scheme", "http"}, {":authority", "host"}});
 
   // the 3rd request is rejected because the cluster1 circuit breaker is open
-  // the aggregate cluster circuit breaker state remains closed
+  // the aggregate cluster circuit breaker remains closed
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.cx_open", 0);
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_cx",
                                1);
@@ -448,9 +452,6 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnections) {
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.cx_open", 1);
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_cx", 0);
   test_server_->waitForCounterEq("cluster.cluster_1.upstream_cx_overflow", 2);
-
-  // TODO: to show that the circuit breaker on cluster_1 are used by both the cluster_1 and
-  // aggregate_cluster.
 
   // respond to the 1st request to the aggregate cluster
   upstream_request_->encodeHeaders(default_response_headers_, true);
@@ -463,7 +464,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnections) {
   ASSERT_TRUE(fake_upstream_connection_->waitForDisconnect());
 
   // after completing the response and closing the connection
-  // the aggregate cluster circuit breaker state remains closed
+  // the aggregate cluster circuit breaker remains closed
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.cx_open", 0);
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_cx",
                                1);
@@ -473,8 +474,8 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnections) {
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_cx", 1);
   test_server_->waitForCounterGe("cluster.cluster_1.upstream_cx_overflow", 2);
 
-  // TODO: this may be greater that 2 because of the pending requests that they will reuse the
-  // connection after the end od the stream
+  // TODO: the overflow may be greater than 2 because of the pending requests that they will reuse
+  // the connection
 
   cleanupUpstreamAndDownstream();
 }
