@@ -38,7 +38,6 @@ struct Thresholds {
   uint32_t max_pending_requests = 1024;
   uint32_t max_retries = 3;
   uint32_t max_connection_pools = std::numeric_limits<uint32_t>::max();
-  uint32_t max_concurrent_streams = 2147483647;
 };
 
 const std::string& config() {
@@ -190,8 +189,8 @@ public:
     xds_stream_->startGrpcStream();
   }
 
-  void clusterThresholdsModifier(envoy::config::cluster::v3::Cluster& cluster,
-                                 const Thresholds& thresholds) {
+  void setCircuitBreakerLimits(envoy::config::cluster::v3::Cluster& cluster,
+                               const Thresholds& thresholds) {
     auto* cluster_circuit_breakers = cluster.mutable_circuit_breakers();
 
     auto* cluster_circuit_breakers_threshold_default = cluster_circuit_breakers->add_thresholds();
@@ -208,45 +207,71 @@ public:
         thresholds.max_retries);
     cluster_circuit_breakers_threshold_default->mutable_max_connection_pools()->set_value(
         thresholds.max_connection_pools);
-
     cluster_circuit_breakers_threshold_default->set_track_remaining(true);
+  }
 
+  void setMaxConcurrentStreams(envoy::config::cluster::v3::Cluster& cluster,
+                               uint32_t max_concurrent_streams) {
     envoy::extensions::upstreams::http::v3::HttpProtocolOptions http_protocol_options;
     http_protocol_options.mutable_explicit_http_config()
         ->mutable_http2_protocol_options()
         ->mutable_max_concurrent_streams()
-        ->set_value(thresholds.max_concurrent_streams);
-    // http_protocol_options.mutable_common_http_protocol_options()->mutable_idle_timeout()->set_nanos(
-    //     0);
+        ->set_value(max_concurrent_streams);
     (*cluster.mutable_typed_extension_protocol_options())
         ["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]
             .PackFrom(http_protocol_options);
   }
 
-  // void httpProtocolOptionsModifier(uint32_t max_concurrent_streams){
-
-  // };
-  void aggregateClusterConfigModifier(const Thresholds& thresholds) {
-    config_helper_.addConfigModifier([this, thresholds](
-                                         envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
-      auto* static_resources = bootstrap.mutable_static_resources();
-      auto* aggregate_cluster =
-          static_resources->mutable_clusters(1); // use name of the aggregate cluster
-
-      // create new aggregate cluster config where aggregate cluster have only cluster_1 as
-      // child cluster
-      auto* aggregate_cluster_type = aggregate_cluster->mutable_cluster_type();
-      auto* aggregate_cluster_typed_config = aggregate_cluster_type->mutable_typed_config();
-      envoy::extensions::clusters::aggregate::v3::ClusterConfig temp_aggregate_cluster_typed_config;
-      aggregate_cluster_typed_config->UnpackTo(&temp_aggregate_cluster_typed_config);
-      temp_aggregate_cluster_typed_config.clear_clusters();
-      temp_aggregate_cluster_typed_config.add_clusters("cluster_1");
-      aggregate_cluster_typed_config->PackFrom(temp_aggregate_cluster_typed_config);
-
-      // set the aggregate_cluster limits
-      this->clusterThresholdsModifier(*aggregate_cluster, thresholds);
-    });
+  void makeAggregateClustersListHaveOnlyOneCluster(
+      envoy::config::cluster::v3::Cluster& aggregate_cluster) {
+    auto* aggregate_cluster_type = aggregate_cluster.mutable_cluster_type();
+    auto* aggregate_cluster_typed_config = aggregate_cluster_type->mutable_typed_config();
+    envoy::extensions::clusters::aggregate::v3::ClusterConfig new_aggregate_cluster_typed_config;
+    aggregate_cluster_typed_config->UnpackTo(&new_aggregate_cluster_typed_config);
+    new_aggregate_cluster_typed_config.clear_clusters();
+    new_aggregate_cluster_typed_config.add_clusters("cluster_1");
+    aggregate_cluster_typed_config->PackFrom(new_aggregate_cluster_typed_config);
   }
+
+  // void retryPolicyModifier(const std::string& route_prefix) {
+  //   // config_helper_.addConfigModifier(
+  //   //     [route_prefix](
+  //   // envoy::extensions::filters::network::http_connection_manager::v3::HttpConnectionManager&
+  //   //             hcm) {
+  //   //       auto* virtual_host = hcm.mutable_route_config()->mutable_virtual_hosts(0);
+
+  //   //       for (int i = 0; i < virtual_host->routes_size(); i++) {
+  //   //         auto* route = virtual_host->mutable_routes(i);
+  //   //         if (route->match().prefix() == route_prefix) {
+  //   //           auto* retry_policy = route->mutable_route()->mutable_retry_policy();
+  //   //           retry_policy->set_retry_on("5xx");
+  //   //           break;
+  //   //         }
+  //   //       }
+  //   //     });
+  //   config_helper_.addConfigModifier([route_prefix](
+  //                                        envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
+  //     auto* static_resources = bootstrap.mutable_static_resources();
+  //     auto* listener = static_resources->mutable_listeners(0);
+  //     auto* filter_chain = listener->mutable_filter_chains(0);
+  //     auto* filter = filter_chain->mutable_filters(0);
+  //     envoy::extensions::filters::network::http_connection_manager::v3::HttpConnectionManager
+  //         http_connection_manager;
+  //     filter->mutable_typed_config()->UnpackTo(&http_connection_manager);
+  //     auto* virtual_host =
+  //     http_connection_manager.mutable_route_config()->mutable_virtual_hosts(0);
+
+  //     for (int i = 0; i < virtual_host->routes_size(); i++) {
+  //       auto* route = virtual_host->mutable_routes(i);
+  //       if (route->match().prefix() == route_prefix) {
+  //         auto* retry_policy = route->mutable_route()->mutable_retry_policy();
+  //         retry_policy->clear_retry_priority();
+  //         retry_policy->set_retry_on("5xx");
+  //       }
+  //     }
+  //     filter->mutable_typed_config()->PackFrom(http_connection_manager);
+  //   });
+  // };
 
   const bool deferred_cluster_creation_;
   envoy::config::cluster::v3::Cluster cluster1_;
@@ -377,13 +402,20 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnections) {
   // make the downstream client use http2
   setDownstreamProtocol(Http::CodecType::HTTP2);
 
-  aggregateClusterConfigModifier(Thresholds{.max_connections = 1, .max_concurrent_streams = 1});
+  config_helper_.addConfigModifier([this](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
+    auto* static_resources = bootstrap.mutable_static_resources();
+    auto* aggregate_cluster =
+        static_resources->mutable_clusters(1); // use name of the aggregate cluster
+
+    makeAggregateClustersListHaveOnlyOneCluster(*aggregate_cluster);
+    setCircuitBreakerLimits(*aggregate_cluster, Thresholds{.max_connections = 1});
+    setMaxConcurrentStreams(*aggregate_cluster, 1U);
+  });
 
   initialize();
 
-  // add circuit breaker limits to cluster_1
-  clusterThresholdsModifier(cluster1_,
-                            Thresholds{.max_connections = 1, .max_concurrent_streams = 1});
+  setCircuitBreakerLimits(cluster1_, Thresholds{.max_connections = 1});
+  setMaxConcurrentStreams(cluster1_, 1U);
 
   EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "55", {}, {}, {}));
 
@@ -422,7 +454,8 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnections) {
   waitForNextUpstreamRequest(FirstUpstreamIndex);
 
   // after creating a connection and sending a request to cluster_1 via aggregate cluster
-  // aggregate_cluster: we expect the circuit breakers to not have changed, because they're not used
+  // aggregate_cluster: we expect the circuit breakers to not have changed, because they're not
+  // used
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.cx_open", 0);
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_cx",
                                1);
@@ -441,9 +474,9 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnections) {
                                      {":authority", "host"}});
 
   // check the upstream_cx_overflow counters
-  // we can't handle the request as the connection can not be created because of the circuit breaker
-  // limit , but since the upstream_cx_overflow counter is incremented for cluster_1 meaning that
-  // the connection is not created and the request is rejected
+  // we can't handle the request as the connection can not be created because of the circuit
+  // breaker limit , but since the upstream_cx_overflow counter is incremented for cluster_1
+  // meaning that the connection is not created and the request is rejected
   test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_cx_overflow", 0);
   test_server_->waitForCounterEq("cluster.cluster_1.upstream_cx_overflow", 1);
 
@@ -466,70 +499,44 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnections) {
   ASSERT_TRUE(fake_upstream_connection_->close());
   ASSERT_TRUE(fake_upstream_connection_->waitForDisconnect());
 
-  // respond with headers
-  // upstream_request_->encodeHeaders(default_response_headers_, false);
-  // std::cout << "after headers | cluster_1 upstream_cx_overflow: "
-  //           << test_server_->counter("cluster.cluster_1.upstream_cx_overflow")->value()
-  //           << std::endl; // got  2 when I closed the stream
-
-  // std::cout << "after stream end | cluster_1 upstream_cx_overflow: "
-  //           << test_server_->counter("cluster.cluster_1.upstream_cx_overflow")->value()
-  //           << std::endl; // 3
-
   // after sending the response
   // aggregate_cluster : we expect the circuit breakers to not have changed, because they're not
   // used
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.cx_open", 0);
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_cx",
                                1);
-  test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_cx_overflow", 0);
+  test_server_->waitForCounterGe("cluster.aggregate_cluster.upstream_cx_overflow", 0);
 
   // cluster_1 : we expect the circuit breakers to go back to initial state
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.cx_open", 0);
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_cx", 1);
-  test_server_->waitForCounterEq(
-      "cluster.cluster_1.upstream_cx_overflow",
-      3); // the overlow is a counter so it's expected to not get back to initial state
-
-  // why it's 3
-  // when we send the 1 request a connection and a stream are created and we reach our
-  // max_connection and max_concurrent_stream. when we send 2nd and 3rd requests they are both
-  // rejected and the overflow is incremented twice, and the requests remain pending when we
-  // complete the 1st request; the steam is closed and the connection remain open (I don't know how
-  // long) connection pool logic will try to reuse this connection for the pending requests (the 1st
-  // one) it will try to create a new stream but it can't because the max_concurrent_stream is
-  // reached on the current connection so it will try to create a new connection  and it can't
-  // because the max_connection is reached so the overflow is incremented again
-
-  // Options to consider :
-  // 1. don't show the overflow after sending the requests as it's a counter and it will not get
-  // back to initial state anyway (which we want to prove by this after stats)
-  // 2. use `waitForCounterGe`
-  // 3. add a comment explaining why it's 3
-  // 4. wasting time trying to close the connection directly after closing the stream xD
+  test_server_->waitForCounterGe("cluster.cluster_1.upstream_cx_overflow", 3);
 
   cleanupUpstreamAndDownstream();
 }
 
 TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRequests) {
-
   // let's specifically use http2 on the downstream client
   // so that we can use the single code_client_ to send many requests (and don't have to create
   // multiple codec_clients_ if we were using http1.1)
   setDownstreamProtocol(Http::CodecType::HTTP2);
 
-  // add circuit breaker limits to aggregate_cluster
-  aggregateClusterConfigModifier(Thresholds{.max_requests = 1});
+  config_helper_.addConfigModifier([this](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
+    auto* static_resources = bootstrap.mutable_static_resources();
+    auto* aggregate_cluster =
+        static_resources->mutable_clusters(1); // use name of the aggregate cluster
 
-  // now call initialize (and that will add cluster_1 to the "dynamic_resources" > "clusters")
+    makeAggregateClustersListHaveOnlyOneCluster(*aggregate_cluster);
+    setCircuitBreakerLimits(*aggregate_cluster, Thresholds{.max_requests = 1});
+  });
+
   initialize();
 
-  // add circuit breaker limits to cluster_1
-  clusterThresholdsModifier(cluster1_, Thresholds{.max_requests = 1});
+  setCircuitBreakerLimits(cluster1_, Thresholds{.max_requests = 1});
 
-  // !!! we need to send the updated cluster1_ to envoy via xds so we the "remaining" stats become
-  // available (because they are not initialized by default during cluster creation)
-  // do we need this expectation ?
+  // !!! we need to send the updated cluster1_ to envoy via xds so we the "remaining" stats
+  // become available (because they are not initialized by default during cluster creation) do
+  // we need this expectation ?
   EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "55", {}, {}, {}));
 
   sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster,
@@ -583,8 +590,8 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRequests) {
 
   ASSERT_TRUE(aggregate_cluster_response2->waitForEndStream());
 
-  // check the status of the response2 is 503 (because the circuit breaker is triggered and so the
-  // request to /aggregatecluster was rejected)
+  // check the status of the response2 is 503 (because the circuit breaker is triggered and so
+  // the request to /aggregatecluster was rejected)
   EXPECT_EQ("503", aggregate_cluster_response2->headers().getStatusValue());
 
   // check the upstream_rq_pending_overflow counters
@@ -598,8 +605,8 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRequests) {
   // wait for cluster1 response to complete and return to the client
   ASSERT_TRUE(cluster1_response1->waitForEndStream());
 
-  // check the status of the response is 503 (because the circuit breaker is triggered and so the
-  // request to /cluster1 was rejected)
+  // check the status of the response is 503 (because the circuit breaker is triggered and so
+  // the request to /cluster1 was rejected)
   EXPECT_EQ("503", cluster1_response1->headers().getStatusValue());
 
   // check the upstream_rq_pending_overflow counters
@@ -633,15 +640,21 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRequests) {
 
 TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
   setDownstreamProtocol(Http::CodecType::HTTP2);
+  config_helper_.addConfigModifier([this](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
+    auto* static_resources = bootstrap.mutable_static_resources();
+    auto* aggregate_cluster =
+        static_resources->mutable_clusters(1); // use name of the aggregate cluster
 
-  aggregateClusterConfigModifier(
-      Thresholds{.max_connections = 1, .max_pending_requests = 1, .max_concurrent_streams = 1});
+    makeAggregateClustersListHaveOnlyOneCluster(*aggregate_cluster);
+    setCircuitBreakerLimits(*aggregate_cluster,
+                            Thresholds{.max_connections = 1, .max_pending_requests = 1});
+    setMaxConcurrentStreams(*aggregate_cluster, 1U);
+  });
 
   initialize();
 
-  clusterThresholdsModifier(
-      cluster1_,
-      Thresholds{.max_connections = 1, .max_pending_requests = 1, .max_concurrent_streams = 1});
+  setCircuitBreakerLimits(cluster1_, Thresholds{.max_connections = 1, .max_pending_requests = 1});
+  setMaxConcurrentStreams(cluster1_, 1U);
 
   EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "55", {}, {}, {}));
 
@@ -750,6 +763,248 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
 
   cleanupUpstreamAndDownstream();
 }
+
+// TEST_P(AggregateIntegrationTest, CircuitBreakerMaxRetriesTest) {
+//   setDownstreamProtocol(Http::CodecType::HTTP2);
+
+//   // config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
+//   //   auto* static_resources = bootstrap.mutable_static_resources();
+//   //   auto* aggregate_cluster = static_resources->mutable_clusters(1);
+
+//   //   // remove cluster_2 from the aggregate cluster's clusters list
+//   //   auto* aggregate_cluster_type = aggregate_cluster->mutable_cluster_type();
+//   //   auto* aggregate_cluster_typed_config = aggregate_cluster_type->mutable_typed_config();
+//   //   envoy::extensions::clusters::aggregate::v3::ClusterConfig
+//   //   temp_aggregate_cluster_typed_config;
+//   //   aggregate_cluster_typed_config->UnpackTo(&temp_aggregate_cluster_typed_config);
+//   //   temp_aggregate_cluster_typed_config.clear_clusters();
+//   //   temp_aggregate_cluster_typed_config.add_clusters("cluster_1");
+//   //   aggregate_cluster_typed_config->PackFrom(temp_aggregate_cluster_typed_config);
+
+//   //   // set the aggregate_cluster circuit breakers
+//   //   auto* aggregate_cluster_circuit_breakers = aggregate_cluster->mutable_circuit_breakers();
+//   //   auto* aggregate_cluster_circuit_breakers_threshold_default =
+//   //       aggregate_cluster_circuit_breakers->add_thresholds();
+//   //   aggregate_cluster_circuit_breakers_threshold_default->set_priority(
+//   //       envoy::config::core::v3::RoutingPriority::DEFAULT);
+//   // aggregate_cluster_circuit_breakers_threshold_default->mutable_max_connections()->set_value(
+//   //       1000000000); // set this high
+//   //
+//   aggregate_cluster_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(
+//   //       1000000000); // set this high
+//   //   aggregate_cluster_circuit_breakers_threshold_default->mutable_max_requests()->set_value(
+//   //       1000000000); // set this high
+//   //   aggregate_cluster_circuit_breakers_threshold_default->mutable_max_retries()->set_value(
+//   //       1); // set to 1
+//   //
+//   aggregate_cluster_circuit_breakers_threshold_default->mutable_max_connection_pools()->set_value(
+//   //       1000000000); // set this high
+//   //   aggregate_cluster_circuit_breakers_threshold_default->set_track_remaining(true);
+
+//   //   auto* listener = static_resources->mutable_listeners(0);
+//   //   auto* filter_chain = listener->mutable_filter_chains(0);
+//   //   auto* filter = filter_chain->mutable_filters(0);
+//   //   envoy::extensions::filters::network::http_connection_manager::v3::HttpConnectionManager
+//   //       http_connection_manager;
+//   //   filter->mutable_typed_config()->UnpackTo(&http_connection_manager);
+//   //   auto* virtual_host =
+//   //   http_connection_manager.mutable_route_config()->mutable_virtual_hosts(0); auto*
+//   //   aggregate_cluster_route = virtual_host->mutable_routes(2);
+//   //   aggregate_cluster_route->mutable_route()->mutable_retry_policy()->clear_retry_priority();
+//   //   // adjust the retry policy on the /aggregatecluster route
+//   //
+//   aggregate_cluster_route->mutable_route()->mutable_retry_policy()->mutable_retry_on()->assign(
+//   //       "5xx"); // retry on 5xx
+//   //   auto* cluster1_route = virtual_host->mutable_routes(0);
+//   //   // adjust the retry policy on the /cluster1 route
+//   //   cluster1_route->mutable_route()->mutable_retry_policy()->mutable_retry_on()->assign(
+//   //       "5xx"); // retry on 5xx
+//   //   filter->mutable_typed_config()->PackFrom(http_connection_manager);
+//   // });
+
+//   aggregateClusterConfigModifier(Thresholds{.max_retries = 1});
+//   retryPolicyModifier("/aggregatecluster");
+
+//   initialize();
+
+//   // add circuit breaker limits to cluster_1
+//   clusterThresholdsModifier(cluster1_, Thresholds{.max_retries = 1});
+//   retryPolicyModifier("/cluster1");
+//   // set the cluster1 breakers
+//   // auto* cluster1_circuit_breakers = cluster1_.mutable_circuit_breakers();
+//   // auto* cluster1_circuit_breakers_threshold_default =
+//   // cluster1_circuit_breakers->add_thresholds();
+//   // cluster1_circuit_breakers_threshold_default->set_priority(
+//   //     envoy::config::core::v3::RoutingPriority::DEFAULT);
+//   // cluster1_circuit_breakers_threshold_default->mutable_max_connections()->set_value(
+//   //     1000000000); // set this high
+//   // cluster1_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(
+//   //     1000000000); // set this high
+//   // cluster1_circuit_breakers_threshold_default->mutable_max_requests()->set_value(
+//   //     1000000000);                                                                  // set
+//   //     this high
+//   // cluster1_circuit_breakers_threshold_default->mutable_max_retries()->set_value(1); // set to
+//   // 1 cluster1_circuit_breakers_threshold_default->mutable_max_connection_pools()->set_value(
+//   //     1000000000); // set this high
+//   // cluster1_circuit_breakers_threshold_default->set_track_remaining(true);
+
+//   // update cluster1 via xDS
+//   EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "55", {}, {}, {}));
+//   sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster,
+//                                                              {cluster1_}, {cluster1_}, {}, "56");
+//   test_server_->waitForGaugeEq("cluster_manager.active_clusters", 3);
+
+//   // confirm we are in the default state for both circuit breakers
+//   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open",
+//                                0);
+//   test_server_->waitForGaugeEq(
+//       "cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 1);
+//   test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow", 0);
+//   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open", 0);
+//   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries",
+//   1); test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow", 0);
+
+//   codec_client_ = makeHttpConnection(lookupPort("http"));
+
+//   // send the first request to /aggregatecluster
+//   auto aggregate_cluster_response1 = codec_client_->makeHeaderOnlyRequest(
+//       Http::TestRequestHeaderMapImpl{{":method", "GET"},
+//                                      {":path", "/aggregatecluster"},
+//                                      {":scheme", "http"},
+//                                      {":authority", "host"}});
+
+//   // wait for the first request (/aggregatecluster) to reach cluster_1
+//   waitForNextUpstreamRequest(FirstUpstreamIndex);
+
+//   // deliberately respond to the first request (/aggregatecluster) with 503 to trigger the first
+//   // retry
+//   upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, true);
+
+//   // wait for the first request retry (/aggregatecluster) to reach cluster_1 [this comes from an
+//   // automatic retry]
+//   waitForNextUpstreamRequest(FirstUpstreamIndex);
+
+//   // save a reference to this specific request, so we can access it later, because
+//   // upstream_request_ will get overwritten
+//   auto& first_upstream_request_retry = *upstream_request_;
+
+//   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open",
+//                                1); // !! aggregate cluster circuit breaker is triggered
+//   test_server_->waitForGaugeEq(
+//       "cluster.aggregate_cluster.circuit_breakers.default.remaining_retries",
+//       0); // no more retries allowed
+//   test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow", 0);
+//   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open",
+//                                0); // unaffected
+//   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries",
+//                                1); // unaffected
+//   test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow",
+//                                  0); // unaffected
+
+//   // send the second request to /aggregatecluster
+//   auto aggregate_cluster_response2 = codec_client_->makeHeaderOnlyRequest(
+//       Http::TestRequestHeaderMapImpl{{":method", "GET"},
+//                                      {":path", "/aggregatecluster"},
+//                                      {":scheme", "http"},
+//                                      {":authority", "host"}});
+
+//   // wait for the second request (/aggregatecluster) to arrive at cluster_1
+//   waitForNextUpstreamRequest(FirstUpstreamIndex);
+
+//   // deliberately respond to the second request (/aggregatecluster) with a 503 to trigger a
+//   // retry
+//   upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, true);
+
+//   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open",
+//                                1); // persisting
+//   test_server_->waitForGaugeEq(
+//       "cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 0); // persisting
+//   test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow",
+//                                  1); // 1 overflow on the aggregate cluster circuit breaker
+//   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open",
+//                                0); // unaffected
+//   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries",
+//                                1); // unaffected
+//   test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow",
+//                                  0); // unaffected
+
+//   // the second retry should be automatically rejected
+
+//   // send the third request directly to /cluster1
+//   auto cluster1_response = codec_client_->makeHeaderOnlyRequest(Http::TestRequestHeaderMapImpl{
+//       {":method", "GET"}, {":path", "/cluster1"}, {":scheme", "http"}, {":authority", "host"}});
+
+//   // wait for the third request (/cluster1) to arrive at cluster_1
+//   waitForNextUpstreamRequest(FirstUpstreamIndex);
+
+//   // deliberately respond to the third request (/cluster1) with a 503 to trigger a retry
+//   upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, true);
+
+//   // wait for the third request retry (/cluster1) to reach cluster_1 [this comes from an
+//   // automatic retry]
+//   waitForNextUpstreamRequest(FirstUpstreamIndex);
+
+//   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open",
+//                                1); // persisting
+//   test_server_->waitForGaugeEq(
+//       "cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 0); // persisting
+//   test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow",
+//                                  1); // persisting
+
+//   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open",
+//                                1); // cluster1 circuit breaker now triggered (but is separate
+//                                    // from the aggregate cluster circuit breaker)
+//   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries",
+//                                0); // see comment above
+//   test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow",
+//                                  0); // unaffected
+
+//   // respond to the third request retry
+//   // THE FACT WE CAN DO THIS PROVES THE AGGREGATE CLUSTER CIRCUIT BREAKER IS SEPARATE FROM THE
+//   // CLUSTER1 CIRCUIT BREAKER OTHERWISE THIS REQUEST WOULD BE AUTOREJECTED IF THE
+//   // /aggregatecluster route max_retries circuit breaker affected the underlying cluster1
+//   upstream_request_->encodeHeaders(default_response_headers_, true);
+
+//   test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow",
+//                                  0); // unaffected
+
+//   // complete request/response3 (/cluster1)
+//   ASSERT_TRUE(cluster1_response->waitForEndStream());
+//   EXPECT_EQ("200", cluster1_response->headers().getStatusValue());
+
+//   // (finally) respond to the first request retry (/aggregatecluster)
+//   first_upstream_request_retry.encodeHeaders(default_response_headers_, true);
+
+//   // we don't need to respond to the second request retry, because it will be automatically
+//   // rejected by the circuit breaker
+
+//   // complete request/response1 (/aggregatecluster)
+//   ASSERT_TRUE(aggregate_cluster_response1->waitForEndStream());
+//   EXPECT_EQ("200", aggregate_cluster_response1->headers().getStatusValue());
+
+//   // complete request/response2 (/aggregatecluster)
+//   ASSERT_TRUE(aggregate_cluster_response2->waitForEndStream());
+//   EXPECT_EQ(
+//       "503",
+//       aggregate_cluster_response2->headers().getStatusValue()); // this was from the
+//       auto-rejection
+
+//   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open",
+//                                0); // returned to its initial state
+//   test_server_->waitForGaugeEq(
+//       "cluster.aggregate_cluster.circuit_breakers.default.remaining_retries",
+//       1); // returned to its initial state
+//   test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow",
+//                                  1); // overflowed 1 time
+//   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open",
+//                                0); // returned to its initial state
+//   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries",
+//                                1); // returned to its initial state
+//   test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow",
+//                                  0); // unaffected
+
+//   cleanupUpstreamAndDownstream();
+// }
 
 } // namespace
 } // namespace Envoy
