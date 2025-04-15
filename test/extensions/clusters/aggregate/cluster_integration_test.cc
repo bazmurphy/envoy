@@ -766,8 +766,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerMaxRetriesTest) {
         "5xx"); // retry on 5xx
     filter->mutable_typed_config()->PackFrom(http_connection_manager);
 
-    auto* aggregate_cluster =
-        static_resources->mutable_clusters(1); // use name of the aggregate cluster
+    auto* aggregate_cluster = static_resources->mutable_clusters(1);
 
     makeAggregateClustersListHaveOnlyOneCluster(*aggregate_cluster);
     setCircuitBreakerLimits(*aggregate_cluster, CircuitBreakerLimits{.max_retries = 1});
@@ -777,201 +776,162 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerMaxRetriesTest) {
 
   setCircuitBreakerLimits(cluster1_, CircuitBreakerLimits{.max_retries = 1});
 
-  // update cluster1 via xDS
   EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "55", {}, {}, {}));
   sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster,
                                                              {cluster1_}, {cluster1_}, {}, "56");
   test_server_->waitForGaugeEq("cluster_manager.active_clusters", 3);
 
-  // confirm we are in the default state for both circuit breakers
-  // aggregate_cluster
+  // initial circuit breaker states:
+  // the aggregate cluster circuit breaker is closed
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open",
                                0);
   test_server_->waitForGaugeEq(
       "cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 1);
   test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow", 0);
-
-  // cluster_1
+  // the cluster1 circuit breaker is closed
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open", 0);
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries", 1);
   test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow", 0);
 
   codec_client_ = makeHttpConnection(lookupPort("http"));
 
-  // send the first request to /aggregatecluster
+  // send the 1st request to the aggregate cluster
   auto aggregate_cluster_response1 = codec_client_->makeHeaderOnlyRequest(
       Http::TestRequestHeaderMapImpl{{":method", "GET"},
                                      {":path", "/aggregatecluster"},
                                      {":scheme", "http"},
                                      {":authority", "host"}});
 
-  // wait for the first request (/aggregatecluster) to reach cluster_1
+  // wait for the 1st request to arrive at cluster1
   waitForNextUpstreamRequest(FirstUpstreamIndex);
 
-  // deliberately respond to the first request (/aggregatecluster) with 503 to trigger the first
-  // retry
+  // TODO: deliberately respond to the 1st request with 503 to trigger the 1st retry
   upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, true);
 
-  // wait for the first request retry (/aggregatecluster) to reach cluster_1 [this comes from an
-  // automatic retry]
+  // TODO: wait for the 1st request retry to arrive at cluster1 [this comes from an automatic retry]
   waitForNextUpstreamRequest(FirstUpstreamIndex);
 
+  // TODO: delete the comment maybe ? I renamed the variable as it's still 1st request
   // save a reference to this specific request, so we can access it later, because
   // upstream_request_ will get overwritten
-  auto& first_upstream_request_retry = *upstream_request_;
+  auto& first_request = *upstream_request_;
 
-  // aggregate_cluster
+  // the aggregate_cluster the circuit breaker opens
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open",
-                               1); // !! aggregate cluster circuit breaker is triggered
+                               1);
   test_server_->waitForGaugeEq(
-      "cluster.aggregate_cluster.circuit_breakers.default.remaining_retries",
-      0); // no more retries allowed
+      "cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 0);
   test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow", 0);
+  // the cluster1 circuit breaker remains closed
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open", 0);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries", 1);
+  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow", 0);
 
-  // cluster_1
-  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open",
-                               0); // unaffected
-  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries",
-                               1); // unaffected
-  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow",
-                                 0); // unaffected
-
-  // send the second request to /aggregatecluster
+  // send the 2nd request to the aggregate cluster
   auto aggregate_cluster_response2 = codec_client_->makeHeaderOnlyRequest(
       Http::TestRequestHeaderMapImpl{{":method", "GET"},
                                      {":path", "/aggregatecluster"},
                                      {":scheme", "http"},
                                      {":authority", "host"}});
 
-  // wait for the second request (/aggregatecluster) to arrive at cluster_1
+  // wait for the 2nd request to arrive at cluster_1
   waitForNextUpstreamRequest(FirstUpstreamIndex);
 
-  // deliberately respond to the second request (/aggregatecluster) with a 503 to trigger a
-  // retry
+  // TODO: deliberately respond to the 2nd request with a 503 to trigger a retry
   upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, true);
 
-  // aggregate_cluster
+  // the aggregate_cluster the circuit breaker remains open and overflows
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open",
-                               1); // persisting
+                               1);
   test_server_->waitForGaugeEq(
-      "cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 0); // persisting
-  test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow",
-                                 1); // 1 overflow on the aggregate cluster circuit breaker
+      "cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 0);
+  test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow", 1);
+  // the cluster1 circuit breaker remains closed
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open", 0);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries", 1);
+  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow", 0);
 
-  // cluster_1
-  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open",
-                               0); // unaffected
-  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries",
-                               1); // unaffected
-  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow",
-                                 0); // unaffected
-
-  // the second retry should be automatically rejected
-
-  // send the third request directly to /cluster1
-  auto cluster1_response = codec_client_->makeHeaderOnlyRequest(Http::TestRequestHeaderMapImpl{
+  // send the 3rd request directly to cluster1
+  auto cluster1_response1 = codec_client_->makeHeaderOnlyRequest(Http::TestRequestHeaderMapImpl{
       {":method", "GET"}, {":path", "/cluster1"}, {":scheme", "http"}, {":authority", "host"}});
 
-  // wait for the third request (/cluster1) to arrive at cluster_1
+  // wait for the 3rd request to arrive at cluster_1
   waitForNextUpstreamRequest(FirstUpstreamIndex);
 
-  // deliberately respond to the third request (/cluster1) with a 503 to trigger a retry
+  // deliberately respond to the 3rd request with a 503 to trigger a retry
   upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, true);
 
+  // TODO: wait for the 3rd request retry to arrive at cluster1 [this comes from an automatic retry]
   waitForNextUpstreamRequest(FirstUpstreamIndex);
 
-  auto& third_upstream_request_retry = *upstream_request_;
+  auto& third_request = *upstream_request_;
 
-  // aggregate_cluster
+  // the aggregate_cluster the circuit breaker remains open
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open",
-                               1); // persisting
+                               1);
   test_server_->waitForGaugeEq(
-      "cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 0); // persisting
-  test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow",
-                                 1); // persisting
+      "cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 0);
+  test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow", 1);
+  // the cluster1 circuit breaker opens
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open", 1);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries", 0);
+  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow", 0);
 
-  // cluster_1
-  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open",
-                               1); // cluster1 circuit breaker now triggered (but is separate
-                                   // from the aggregate cluster circuit breaker)
-  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries",
-                               0); // see comment above
-  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow",
-                                 0); // unaffected
-
-  // send the fourth request directly to /cluster1
+  // send the 4th request directly to cluster1
   auto cluster1_response2 = codec_client_->makeHeaderOnlyRequest(Http::TestRequestHeaderMapImpl{
       {":method", "GET"}, {":path", "/cluster1"}, {":scheme", "http"}, {":authority", "host"}});
 
-  // wait for the third request (/cluster1) to arrive at cluster_1
+  // wait for the 4th request to arrive at cluster_1
   waitForNextUpstreamRequest(FirstUpstreamIndex);
-  // deliberately respond to the second request (/aggregatecluster) with a 503 to trigger a
-  // retry
+
+  // deliberately respond to the 4th request with a 503 to trigger a retry
   upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, true);
 
-  // aggregate_cluster
+  // the aggregate_cluster the circuit breaker remains open
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open",
-                               1); // persisting
+                               1);
   test_server_->waitForGaugeEq(
-      "cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 0); // persisting
-  test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow",
-                                 1); // persisting
+      "cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 0);
+  test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow", 1);
+  // the cluster1 circuit breaker remains open and overflows
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open", 1);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries", 0);
+  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow", 1);
 
-  // cluster_1
-  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open",
-                               1); // persisting
-  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries",
-                               0); // persisting
-  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow",
-                                 1); // 1 overflow on the cluster_1 circuit breaker
-
-  // respond to the third request retry
+  // TODO : are we keeping this comment ?
   // THE FACT WE CAN DO THIS PROVES THE AGGREGATE CLUSTER CIRCUIT BREAKER IS SEPARATE FROM THE
   // CLUSTER1 CIRCUIT BREAKER OTHERWISE THIS REQUEST WOULD BE AUTOREJECTED IF THE
   // /aggregatecluster route max_retries circuit breaker affected the underlying cluster1
-  third_upstream_request_retry.encodeHeaders(default_response_headers_, true);
 
-  // complete request/response3 (/cluster1)
-  ASSERT_TRUE(cluster1_response->waitForEndStream());
-  EXPECT_EQ("200", cluster1_response->headers().getStatusValue());
+  // respond to the 3rd request to cluster1
+  third_request.encodeHeaders(default_response_headers_, true);
+  ASSERT_TRUE(cluster1_response1->waitForEndStream());
+  EXPECT_EQ("200", cluster1_response1->headers().getStatusValue());
 
-  // complete request/response4 (/cluster1)
+  // respond to the 4th request to cluster1
   ASSERT_TRUE(cluster1_response2->waitForEndStream());
-  EXPECT_EQ("503",
-            cluster1_response2->headers().getStatusValue()); // this was from the auto - rejection
+  EXPECT_EQ("503", cluster1_response2->headers().getStatusValue());
 
-  // (finally) respond to the first request retry (/aggregatecluster)
-  first_upstream_request_retry.encodeHeaders(default_response_headers_, true);
-
-  // we don't need to respond to the second request retry, because it will be automatically
-  // rejected by the circuit breaker
-
-  // complete request/response1 (/aggregatecluster)
+  // respond to the 1st request to the aggregate cluster
+  first_request.encodeHeaders(default_response_headers_, true);
   ASSERT_TRUE(aggregate_cluster_response1->waitForEndStream());
   EXPECT_EQ("200", aggregate_cluster_response1->headers().getStatusValue());
 
-  // complete request/response2 (/aggregatecluster)
+  // respond to the 2nd request to the aggregate cluster
   ASSERT_TRUE(aggregate_cluster_response2->waitForEndStream());
-  EXPECT_EQ("503",
-            aggregate_cluster_response2->headers()
-                .getStatusValue()); // this was from the auto - rejection
+  EXPECT_EQ("503", aggregate_cluster_response2->headers().getStatusValue());
 
-  // aggregate_cluster
+  // the aggregate cluster circuit breaker is closed
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open",
-                               0); // returned to its initial state
+                               0);
   test_server_->waitForGaugeEq(
-      "cluster.aggregate_cluster.circuit_breakers.default.remaining_retries",
-      1); // returned to its initial state
-  test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow",
-                                 1); // overflowed 1 time
+      "cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 1);
+  test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow", 1);
 
-  // cluster_1
-  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open",
-                               0); // returned to its initial state
-  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries",
-                               1); // returned to its initial state
-  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow",
-                                 1); // unaffected
+  // the cluster1 circuit breaker is closed
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open", 0);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries", 1);
+  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow", 1);
 
   cleanupUpstreamAndDownstream();
 }
