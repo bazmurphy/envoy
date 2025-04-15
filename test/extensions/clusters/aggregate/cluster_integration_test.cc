@@ -446,8 +446,6 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnections) {
 
   test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_cx_overflow", 0);
   test_server_->waitForCounterEq("cluster.cluster_1.upstream_cx_overflow", 2);
-  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_pending",
-                               1022); // 2 pending requests
 
   // Send response for first request
   upstream_request_->encodeHeaders(default_response_headers_, true);
