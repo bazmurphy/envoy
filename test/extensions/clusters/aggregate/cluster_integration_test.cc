@@ -352,12 +352,6 @@ TEST_P(AggregateIntegrationTest, PreviousPrioritiesRetryPredicate) {
   cleanupUpstreamAndDownstream();
 }
 
-// Cluster maximum active retries: 
-// The maximum number of retries that can be outstanding to all hosts in a cluster at any given time. 
-// In general we recommend using retry budgets; however, if static circuit breaking is preferred it should aggressively circuit break retries. 
-// This is so that retries for sporadic failures are allowed, but the overall retry volume cannot explode and cause large scale cascading failure. 
-// If this circuit breaker overflows the upstream_rq_retry_overflow counter for the cluster will increment.
-
 // max_retries (UInt32Value) - The maximum number of parallel retries that Envoy will allow to the upstream cluster. If not specified, the default is 3.
 // rq_retry_open (Gauge) - Whether the retry circuit breaker is under its concurrency limit (0) or is at capacity and no longer admitting (1)
 // remaining_retries (Gauge) - Number of remaining retries until the circuit breaker reaches its concurrency limit
