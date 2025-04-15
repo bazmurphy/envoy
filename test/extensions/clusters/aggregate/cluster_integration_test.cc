@@ -740,6 +740,10 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
   cleanupUpstreamAndDownstream();
 }
 
+// TODO : test description
+// "requests that get sent to the aggregate cluster contribute to the circuit breaker limit on the
+// underlying cluster"
+// "...the aggregate cluster only affects the circuit breaker on the underlying cluster"
 TEST_P(AggregateIntegrationTest, CircuitBreakerMaxRetriesTest) {
 
   setDownstreamProtocol(Http::CodecType::HTTP2);
