@@ -542,8 +542,6 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerMaxRetriesTest) {
   printStatsForMaxRetries("AFTER");
 
   cleanupUpstreamAndDownstream();
-
-  // a new line to allow a commit to test author/sign-off/co-author
 }
 
 } // namespace
