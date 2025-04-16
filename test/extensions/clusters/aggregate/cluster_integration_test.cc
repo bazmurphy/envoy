@@ -359,7 +359,7 @@ TEST_P(AggregateIntegrationTest, PreviousPrioritiesRetryPredicate) {
 
 // Tests the max_connections circuit breaker behaviour on the aggregate cluster and its underlying
 // cluster1. When connections reach the configured limit, only the underlying cluster1's circuit
-// breaker opens. The aggregate cluster's circuit breaker remains unaffected. When cluster1's
+// breaker opens, the aggregate cluster's circuit breaker is completely unaffected. When cluster1's
 // circuit breaker opens, new connections are rejected, and the overflow counter increases. After
 // closing the connection, cluster1's circuit breaker closes again.
 TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnections) {
@@ -479,9 +479,9 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxConnections) {
   cleanupUpstreamAndDownstream();
 }
 
-// Tests the max_requests circuit breaker behaviour on the aggregate cluster and its underlying 
+// Tests the max_requests circuit breaker behaviour on the aggregate cluster and its underlying
 // cluster1. When requests reach the configured limit, only the underlying cluster1's circuit
-// breaker opens. The aggregate cluster's circuit breaker remains unaffected. When
+// breaker opens, the aggregate cluster's circuit breaker is completely unaffected. When
 // cluster1's circuit breaker opens, new requests are rejected, and the overflow counter increases.
 // After completing the request, cluster1's circuit breaker closes again.
 TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRequests) {
@@ -600,10 +600,10 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxRequests) {
 
 // Tests the max_pending_requests circuit breaker behaviour on the aggregate cluster and its
 // underlying cluster1. When pending requests reach the configured limit, only the underlying
-// cluster1's circuit breaker opens. The aggregate cluster's circuit breaker remains unaffected.
-// When cluster1's circuit breaker opens, additional pending requests are rejected, and the overflow
-// counter increases. After processing the pending requests, cluster1's circuit breaker closes
-// again.
+// cluster1's circuit breaker opens, the aggregate cluster's circuit breaker is completely
+// unaffected. When cluster1's circuit breaker opens, additional pending requests are rejected, and
+// the overflow counter increases. After processing the pending requests, cluster1's circuit breaker
+// closes again.
 TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
   setDownstreamProtocol(Http::CodecType::HTTP2);
 
@@ -652,7 +652,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
   // wait for the first request to arrive at cluster1
   waitForNextUpstreamRequest(FirstUpstreamIndex);
 
-  // send the second request to the aggregate cluster [this is the first pending request]
+  // send the second request to the aggregate cluster (this is the first pending request)
   auto aggregate_cluster_response2 = codec_client_->makeHeaderOnlyRequest(
       Http::TestRequestHeaderMapImpl{{":method", "GET"},
                                      {":path", "/aggregatecluster"},
@@ -670,7 +670,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_pending", 0);
   test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_pending_overflow", 0);
 
-  // send the third request to the aggregate cluster [this is the second pending request]
+  // send the third request to the aggregate cluster (this is the second pending request)
   auto aggregate_cluster_response3 = codec_client_->makeHeaderOnlyRequest(
       Http::TestRequestHeaderMapImpl{{":method", "GET"},
                                      {":path", "/aggregatecluster"},
@@ -740,10 +740,10 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerTestMaxPendingRequests) {
 
 // Tests the max_retries circuit breaker behaviour on the aggregate cluster and its underlying
 // cluster1. Unlike the other circuit breakers, the aggregate cluster's retry circuit breaker opens
-// when retries to the aggregate cluster exceed its configured limit. cluster1's retry circuit
-// breaker opens independently when direct requests to cluster1 exceed its configured limit. When
-// either circuit breaker opens, additional retries to that cluster are prevented, and overflow
-// counters increase. The two circuit breakers operate independently.
+// when retries exceed its configured limit. cluster1's retry circuit breaker opens independently
+// when direct requests to cluster1 exceed its configured limit. When either circuit breaker opens,
+// additional retries to that cluster are prevented, and overflow counters increase. The two circuit
+// breakers operate independently.
 TEST_P(AggregateIntegrationTest, CircuitBreakerMaxRetriesTest) {
   setDownstreamProtocol(Http::CodecType::HTTP2);
 
