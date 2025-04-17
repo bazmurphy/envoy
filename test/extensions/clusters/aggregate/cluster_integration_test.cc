@@ -552,6 +552,8 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerMaxRetriesCONCURRENT) {
   // we need to create multiple CONCURRENT requests to cluster1
 
   std::vector<IntegrationStreamDecoderPtr> cluster1_responses;
+
+  printStatsForMaxRetries("BEFORE");
   
   // send four requests directly to cluster1
   for (int i = 0; i < 4; i++) {
@@ -568,7 +570,7 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerMaxRetriesCONCURRENT) {
   for (int i = 0; i < 4; i++) {
     waitForNextUpstreamRequest(FirstUpstreamIndex);
     upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, true);
-    printStatsForMaxRetries("REQUEST " + std::to_string(i));
+    printStatsForMaxRetries("PART1 REQUEST " + std::to_string(i));
     
     // this is the third retry that opens the circuit breaker
     if (i == 2) {
@@ -599,11 +601,13 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerMaxRetriesCONCURRENT) {
   for (int i = 0; i < 3; i++) {
     waitForNextUpstreamRequest(FirstUpstreamIndex);
     upstream_request_->encodeHeaders(default_response_headers_, true);
-    printStatsForMaxRetries("UNWIND " + std::to_string(i));
+    printStatsForMaxRetries("PART2 REQUEST " + std::to_string(i));
   }
   
   // complete the active /aggregatecluster request on the upstream
   aggregate_cluster_first_request_retry->encodeHeaders(default_response_headers_, true);
+
+  printStatsForMaxRetries("AFTER");
 
   // circuit breakers are back to their initial state
   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open", 0);
@@ -619,3 +623,130 @@ TEST_P(AggregateIntegrationTest, CircuitBreakerMaxRetriesCONCURRENT) {
 
 } // namespace
 } // namespace Envoy
+
+// --------------------
+// BEFORE aggregate_cluster rq_retry_open: 1
+// BEFORE aggregate_cluster remaining_retries: 0
+// BEFORE aggregate_cluster upstream_rq_retry: 1
+// BEFORE aggregate_cluster upstream_rq_retry_overflow: 1
+// BEFORE cluster_1 rq_retry_open: 0
+// BEFORE cluster_1 remaining_retries: 3
+// BEFORE cluster_1 upstream_rq_retry: 0
+// BEFORE cluster_1 upstream_rq_retry_success: 0
+// BEFORE cluster_1 upstream_rq_retry_overflow: 0
+// BEFORE cluster_1 upstream_rq_total: 3
+// BEFORE cluster_1 upstream_rq_active: 1
+// BEFORE cluster_1 upstream_rq_pending_total: 1
+// BEFORE cluster_1 upstream_rq_pending_active: 0
+// --------------------
+// PART1 REQUEST 0 aggregate_cluster rq_retry_open: 1
+// PART1 REQUEST 0 aggregate_cluster remaining_retries: 0
+// PART1 REQUEST 0 aggregate_cluster upstream_rq_retry: 1
+// PART1 REQUEST 0 aggregate_cluster upstream_rq_retry_overflow: 1
+// PART1 REQUEST 0 cluster_1 rq_retry_open: 0
+// PART1 REQUEST 0 cluster_1 remaining_retries: 2
+// PART1 REQUEST 0 cluster_1 upstream_rq_retry: 1
+// PART1 REQUEST 0 cluster_1 upstream_rq_retry_success: 0
+// PART1 REQUEST 0 cluster_1 upstream_rq_retry_overflow: 0
+// PART1 REQUEST 0 cluster_1 upstream_rq_total: 8
+// PART1 REQUEST 0 cluster_1 upstream_rq_active: 5
+// PART1 REQUEST 0 cluster_1 upstream_rq_pending_total: 1
+// PART1 REQUEST 0 cluster_1 upstream_rq_pending_active: 0
+// --------------------
+// PART1 REQUEST 1 aggregate_cluster rq_retry_open: 1
+// PART1 REQUEST 1 aggregate_cluster remaining_retries: 0
+// PART1 REQUEST 1 aggregate_cluster upstream_rq_retry: 1
+// PART1 REQUEST 1 aggregate_cluster upstream_rq_retry_overflow: 1
+// PART1 REQUEST 1 cluster_1 rq_retry_open: 0
+// PART1 REQUEST 1 cluster_1 remaining_retries: 1
+// PART1 REQUEST 1 cluster_1 upstream_rq_retry: 2
+// PART1 REQUEST 1 cluster_1 upstream_rq_retry_success: 0
+// PART1 REQUEST 1 cluster_1 upstream_rq_retry_overflow: 0
+// PART1 REQUEST 1 cluster_1 upstream_rq_total: 9
+// PART1 REQUEST 1 cluster_1 upstream_rq_active: 5
+// PART1 REQUEST 1 cluster_1 upstream_rq_pending_total: 1
+// PART1 REQUEST 1 cluster_1 upstream_rq_pending_active: 0
+// --------------------
+// PART1 REQUEST 2 aggregate_cluster rq_retry_open: 1
+// PART1 REQUEST 2 aggregate_cluster remaining_retries: 0
+// PART1 REQUEST 2 aggregate_cluster upstream_rq_retry: 1
+// PART1 REQUEST 2 aggregate_cluster upstream_rq_retry_overflow: 1
+// PART1 REQUEST 2 cluster_1 rq_retry_open: 1
+// PART1 REQUEST 2 cluster_1 remaining_retries: 0
+// PART1 REQUEST 2 cluster_1 upstream_rq_retry: 3
+// PART1 REQUEST 2 cluster_1 upstream_rq_retry_success: 0
+// PART1 REQUEST 2 cluster_1 upstream_rq_retry_overflow: 0
+// PART1 REQUEST 2 cluster_1 upstream_rq_total: 10
+// PART1 REQUEST 2 cluster_1 upstream_rq_active: 5
+// PART1 REQUEST 2 cluster_1 upstream_rq_pending_total: 1
+// PART1 REQUEST 2 cluster_1 upstream_rq_pending_active: 0
+// --------------------
+// PART1 REQUEST 3 aggregate_cluster rq_retry_open: 1
+// PART1 REQUEST 3 aggregate_cluster remaining_retries: 0
+// PART1 REQUEST 3 aggregate_cluster upstream_rq_retry: 1
+// PART1 REQUEST 3 aggregate_cluster upstream_rq_retry_overflow: 1
+// PART1 REQUEST 3 cluster_1 rq_retry_open: 1
+// PART1 REQUEST 3 cluster_1 remaining_retries: 0
+// PART1 REQUEST 3 cluster_1 upstream_rq_retry: 3
+// PART1 REQUEST 3 cluster_1 upstream_rq_retry_success: 0
+// PART1 REQUEST 3 cluster_1 upstream_rq_retry_overflow: 1
+// PART1 REQUEST 3 cluster_1 upstream_rq_total: 10
+// PART1 REQUEST 3 cluster_1 upstream_rq_active: 4
+// PART1 REQUEST 3 cluster_1 upstream_rq_pending_total: 1
+// PART1 REQUEST 3 cluster_1 upstream_rq_pending_active: 0
+// --------------------
+// PART2 REQUEST 0 aggregate_cluster rq_retry_open: 1
+// PART2 REQUEST 0 aggregate_cluster remaining_retries: 0
+// PART2 REQUEST 0 aggregate_cluster upstream_rq_retry: 1
+// PART2 REQUEST 0 aggregate_cluster upstream_rq_retry_overflow: 1
+// PART2 REQUEST 0 cluster_1 rq_retry_open: 0
+// PART2 REQUEST 0 cluster_1 remaining_retries: 1
+// PART2 REQUEST 0 cluster_1 upstream_rq_retry: 3
+// PART2 REQUEST 0 cluster_1 upstream_rq_retry_success: 1
+// PART2 REQUEST 0 cluster_1 upstream_rq_retry_overflow: 1
+// PART2 REQUEST 0 cluster_1 upstream_rq_total: 10
+// PART2 REQUEST 0 cluster_1 upstream_rq_active: 3
+// PART2 REQUEST 0 cluster_1 upstream_rq_pending_total: 1
+// PART2 REQUEST 0 cluster_1 upstream_rq_pending_active: 0
+// --------------------
+// PART2 REQUEST 1 aggregate_cluster rq_retry_open: 1
+// PART2 REQUEST 1 aggregate_cluster remaining_retries: 0
+// PART2 REQUEST 1 aggregate_cluster upstream_rq_retry: 1
+// PART2 REQUEST 1 aggregate_cluster upstream_rq_retry_overflow: 1
+// PART2 REQUEST 1 cluster_1 rq_retry_open: 0
+// PART2 REQUEST 1 cluster_1 remaining_retries: 2
+// PART2 REQUEST 1 cluster_1 upstream_rq_retry: 3
+// PART2 REQUEST 1 cluster_1 upstream_rq_retry_success: 2
+// PART2 REQUEST 1 cluster_1 upstream_rq_retry_overflow: 1
+// PART2 REQUEST 1 cluster_1 upstream_rq_total: 10
+// PART2 REQUEST 1 cluster_1 upstream_rq_active: 2
+// PART2 REQUEST 1 cluster_1 upstream_rq_pending_total: 1
+// PART2 REQUEST 1 cluster_1 upstream_rq_pending_active: 0
+// --------------------
+// PART2 REQUEST 2 aggregate_cluster rq_retry_open: 1
+// PART2 REQUEST 2 aggregate_cluster remaining_retries: 0
+// PART2 REQUEST 2 aggregate_cluster upstream_rq_retry: 1
+// PART2 REQUEST 2 aggregate_cluster upstream_rq_retry_overflow: 1
+// PART2 REQUEST 2 cluster_1 rq_retry_open: 0
+// PART2 REQUEST 2 cluster_1 remaining_retries: 3
+// PART2 REQUEST 2 cluster_1 upstream_rq_retry: 3
+// PART2 REQUEST 2 cluster_1 upstream_rq_retry_success: 3
+// PART2 REQUEST 2 cluster_1 upstream_rq_retry_overflow: 1
+// PART2 REQUEST 2 cluster_1 upstream_rq_total: 10
+// PART2 REQUEST 2 cluster_1 upstream_rq_active: 1
+// PART2 REQUEST 2 cluster_1 upstream_rq_pending_total: 1
+// PART2 REQUEST 2 cluster_1 upstream_rq_pending_active: 0
+// --------------------
+// AFTER aggregate_cluster rq_retry_open: 1
+// AFTER aggregate_cluster remaining_retries: 1
+// AFTER aggregate_cluster upstream_rq_retry: 1
+// AFTER aggregate_cluster upstream_rq_retry_overflow: 1
+// AFTER cluster_1 rq_retry_open: 0
+// AFTER cluster_1 remaining_retries: 3
+// AFTER cluster_1 upstream_rq_retry: 3
+// AFTER cluster_1 upstream_rq_retry_success: 3
+// AFTER cluster_1 upstream_rq_retry_overflow: 1
+// AFTER cluster_1 upstream_rq_total: 10
+// AFTER cluster_1 upstream_rq_active: 0
+// AFTER cluster_1 upstream_rq_pending_total: 1
+// AFTER cluster_1 upstream_rq_pending_active: 0
