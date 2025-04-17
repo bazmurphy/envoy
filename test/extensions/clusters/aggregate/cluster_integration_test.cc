@@ -1,4 +1,6 @@
 #include "envoy/config/cluster/v3/cluster.pb.h"
+#include "envoy/extensions/clusters/aggregate/v3/cluster.pb.h"
+#include "envoy/extensions/upstreams/http/v3/http_protocol_options.pb.h"
 #include "envoy/grpc/status.h"
 #include "envoy/stats/scope.h"
 
@@ -28,6 +30,37 @@ const char SecondClusterName[] = "cluster_2";
 // Index in fake_upstreams_
 const int FirstUpstreamIndex = 2;
 const int SecondUpstreamIndex = 3;
+struct CircuitBreakerLimits {
+  uint32_t max_connections = 1024;
+  uint32_t max_requests = 1024;
+  uint32_t max_pending_requests = 1024;
+  uint32_t max_retries = 3;
+  uint32_t max_connection_pools = std::numeric_limits<uint32_t>::max();
+
+  CircuitBreakerLimits withMaxConnections(uint32_t max_connections) const {
+    CircuitBreakerLimits limits = *this;
+    limits.max_connections = max_connections;
+    return limits;
+  }
+
+  CircuitBreakerLimits withMaxRequests(uint32_t max_requests) const {
+    CircuitBreakerLimits limits = *this;
+    limits.max_requests = max_requests;
+    return limits;
+  }
+
+  CircuitBreakerLimits withMaxPendingRequests(uint32_t max_pending_requests) const {
+    CircuitBreakerLimits limits = *this;
+    limits.max_pending_requests = max_pending_requests;
+    return limits;
+  }
+
+  CircuitBreakerLimits withMaxRetries(uint32_t max_retries) const {
+    CircuitBreakerLimits limits = *this;
+    limits.max_retries = max_retries;
+    return limits;
+  }
+};
 
 const std::string& config() {
   CONSTRUCT_ON_FIRST_USE(std::string, fmt::format(R"EOF(
@@ -178,6 +211,97 @@ public:
     xds_stream_->startGrpcStream();
   }
 
+  void setCircuitBreakerLimits(envoy::config::cluster::v3::Cluster& cluster,
+                               const CircuitBreakerLimits& limits) {
+    auto* cluster_circuit_breakers = cluster.mutable_circuit_breakers();
+
+    auto* cluster_circuit_breakers_threshold_default = cluster_circuit_breakers->add_thresholds();
+    cluster_circuit_breakers_threshold_default->set_priority(
+        envoy::config::core::v3::RoutingPriority::DEFAULT);
+
+    cluster_circuit_breakers_threshold_default->mutable_max_connections()->set_value(
+        limits.max_connections);
+    cluster_circuit_breakers_threshold_default->mutable_max_pending_requests()->set_value(
+        limits.max_pending_requests);
+    cluster_circuit_breakers_threshold_default->mutable_max_requests()->set_value(
+        limits.max_requests);
+    cluster_circuit_breakers_threshold_default->mutable_max_retries()->set_value(
+        limits.max_retries);
+    cluster_circuit_breakers_threshold_default->mutable_max_connection_pools()->set_value(
+        limits.max_connection_pools);
+    cluster_circuit_breakers_threshold_default->set_track_remaining(true);
+  }
+
+  void setMaxConcurrentStreams(envoy::config::cluster::v3::Cluster& cluster,
+                               uint32_t max_concurrent_streams) {
+    envoy::extensions::upstreams::http::v3::HttpProtocolOptions http_protocol_options;
+    http_protocol_options.mutable_explicit_http_config()
+        ->mutable_http2_protocol_options()
+        ->mutable_max_concurrent_streams()
+        ->set_value(max_concurrent_streams);
+    (*cluster.mutable_typed_extension_protocol_options())
+        ["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]
+            .PackFrom(http_protocol_options);
+  }
+
+  void
+  reduceAggregateClustersListToOneCluster(envoy::config::cluster::v3::Cluster& aggregate_cluster) {
+    auto* aggregate_cluster_type = aggregate_cluster.mutable_cluster_type();
+    auto* aggregate_cluster_typed_config = aggregate_cluster_type->mutable_typed_config();
+    envoy::extensions::clusters::aggregate::v3::ClusterConfig new_aggregate_cluster_typed_config;
+    aggregate_cluster_typed_config->UnpackTo(&new_aggregate_cluster_typed_config);
+    new_aggregate_cluster_typed_config.clear_clusters();
+    new_aggregate_cluster_typed_config.add_clusters("cluster_1");
+    aggregate_cluster_typed_config->PackFrom(new_aggregate_cluster_typed_config);
+  }
+
+  // !! TEMPORARY - REMOVE LATER
+  void printStatsForMaxRetries(const std::string& prefix) {
+    std::cout << "--------------------" << std::endl;
+    std::cout << prefix << " aggregate_cluster rq_retry_open: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open")->value() << std::endl;
+    std::cout << prefix << " aggregate_cluster remaining_retries: " << test_server_->gauge("cluster.aggregate_cluster.circuit_breakers.default.remaining_retries")->value() << std::endl;
+    // std::cout << prefix << " aggregate_cluster upstream_rq_retry: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry")->value() << std::endl;
+    // std::cout << prefix << " aggregate_cluster upstream_rq_retry_success: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_success")->value() << std::endl;
+    std::cout << prefix << " aggregate_cluster upstream_rq_retry_overflow: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_overflow")->value() << std::endl;
+    // std::cout << prefix << " aggregate_cluster upstream_rq_retry_limit_exceeded: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_limit_exceeded")->value() << std::endl;
+    // std::cout << prefix << " aggregate_cluster upstream_rq_retry_backoff_exponential: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_backoff_exponential")->value() << std::endl;
+    // std::cout << prefix << " aggregate_cluster upstream_rq_retry_backoff_ratelimited: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_retry_backoff_ratelimited")->value() << std::endl;
+    // std::cout << prefix << " aggregate_cluster upstream_rq_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_total")->value() << std::endl;
+    // std::cout << prefix << " aggregate_cluster upstream_rq_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_rq_active")->value() << std::endl;
+    // std::cout << prefix << " aggregate_cluster upstream_rq_cancelled: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_cancelled")->value() << std::endl;
+    // std::cout << prefix << " aggregate_cluster upstream_rq_timeout: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_timeout")->value() << std::endl;
+    // std::cout << prefix << " aggregate_cluster upstream_rq_completed: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_completed")->value() << std::endl;
+    // std::cout << prefix << " aggregate_cluster upstream_rq_max_duration_reached: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_max_duration_reached")->value() << std::endl;
+    // std::cout << prefix << " aggregate_cluster upstream_rq_per_try_timeout: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_per_try_timeout")->value() << std::endl;
+    // std::cout << prefix << " aggregate_cluster upstream_rq_rx_reset: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_rx_reset")->value() << std::endl;
+    // std::cout << prefix << " aggregate_cluster upstream_rq_tx_reset: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_tx_reset")->value() << std::endl;
+    // std::cout << prefix << " aggregate_cluster upstream_rq_503: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_503")->value() << std::endl;
+    // std::cout << prefix << " aggregate_cluster upstream_rq_504: " << test_server_->counter("cluster.aggregate_cluster.upstream_rq_504")->value() << std::endl;
+    // std::cout << prefix << " aggregate_cluster upstream_cx_active: " << test_server_->gauge("cluster.aggregate_cluster.upstream_cx_active")->value() << std::endl;
+    // std::cout << prefix << " aggregate_cluster upstream_cx_total: " << test_server_->counter("cluster.aggregate_cluster.upstream_cx_total")->value() << std::endl;
+    std::cout << prefix << " cluster_1 rq_retry_open: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.rq_retry_open")->value() << std::endl;
+    std::cout << prefix << " cluster_1 remaining_retries: " << test_server_->gauge("cluster.cluster_1.circuit_breakers.default.remaining_retries")->value() << std::endl;
+    // std::cout << prefix << " cluster_1 upstream_rq_retry: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry")->value() << std::endl;
+    // std::cout << prefix << " cluster_1 upstream_rq_retry_success: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_success")->value() << std::endl;
+    std::cout << prefix << " cluster_1 upstream_rq_retry_overflow: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_overflow")->value() << std::endl;
+    // std::cout << prefix << " cluster_1 upstream_rq_retry_limit_exceeded: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_limit_exceeded")->value() << std::endl;
+    // std::cout << prefix << " cluster_1 upstream_rq_retry_backoff_exponential: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_backoff_exponential")->value() << std::endl;
+    // std::cout << prefix << " cluster_1 upstream_rq_retry_backoff_ratelimited: " << test_server_->counter("cluster.cluster_1.upstream_rq_retry_backoff_ratelimited")->value() << std::endl;
+    // std::cout << prefix << " cluster_1 upstream_rq_total: " << test_server_->counter("cluster.cluster_1.upstream_rq_total")->value() << std::endl;
+    // std::cout << prefix << " cluster_1 upstream_rq_active: " << test_server_->gauge("cluster.cluster_1.upstream_rq_active")->value() << std::endl;
+    // std::cout << prefix << " cluster_1 upstream_rq_cancelled: " << test_server_->counter("cluster.cluster_1.upstream_rq_cancelled")->value() << std::endl;
+    // std::cout << prefix << " cluster_1 upstream_rq_timeout: " << test_server_->counter("cluster.cluster_1.upstream_rq_timeout")->value() << std::endl;
+    // std::cout << prefix << " cluster_1 upstream_rq_completed: " << test_server_->counter("cluster.cluster_1.upstream_rq_completed")->value() << std::endl;
+    // std::cout << prefix << " cluster_1 upstream_rq_max_duration_reached: " << test_server_->counter("cluster.cluster_1.upstream_rq_max_duration_reached")->value() << std::endl;
+    // std::cout << prefix << " cluster_1 upstream_rq_per_try_timeout: " << test_server_->counter("cluster.cluster_1.upstream_rq_per_try_timeout")->value() << std::endl;
+    // std::cout << prefix << " cluster_1 upstream_rq_rx_reset: " << test_server_->counter("cluster.cluster_1.upstream_rq_rx_reset")->value() << std::endl;
+    // std::cout << prefix << " cluster_1 upstream_rq_tx_reset: " << test_server_->counter("cluster.cluster_1.upstream_rq_tx_reset")->value() << std::endl;
+    // std::cout << prefix << " cluster_1 upstream_rq_503: " << test_server_->counter("cluster.cluster_1.upstream_rq_503")->value() << std::endl;
+    // std::cout << prefix << " cluster_1 upstream_rq_504: " << test_server_->counter("cluster.cluster_1.upstream_rq_504")->value() << std::endl;
+    // std::cout << prefix << " cluster_1 upstream_cx_active: " << test_server_->gauge("cluster.cluster_1.upstream_cx_active")->value() << std::endl;
+    // std::cout << prefix << " cluster_1 upstream_cx_total: " << test_server_->counter("cluster.cluster_1.upstream_cx_total")->value() << std::endl;
+  }
+
   const bool deferred_cluster_creation_;
   envoy::config::cluster::v3::Cluster cluster1_;
   envoy::config::cluster::v3::Cluster cluster2_;
@@ -302,6 +426,673 @@ TEST_P(AggregateIntegrationTest, PreviousPrioritiesRetryPredicate) {
   EXPECT_EQ("200", response->headers().getStatusValue());
   cleanupUpstreamAndDownstream();
 }
+
+// https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/circuit_breaking
+
+// Cluster maximum active retries: The maximum number of retries that can be outstanding to all hosts in a cluster at any given time. 
+// In general we recommend using retry budgets; however, if static circuit breaking is preferred it should aggressively circuit break retries. 
+// This is so that retries for sporadic failures are allowed, but the overall retry volume cannot explode and cause large scale cascading failure. 
+// If this circuit breaker overflows the upstream_rq_retry_overflow counter for the cluster will increment.
+
+// max_retries (UInt32Value) - The maximum number of parallel retries that Envoy will allow to the upstream cluster. If not specified, the default is 3.
+// rq_retry_open (Gauge) - Whether the retry circuit breaker is under its concurrency limit (0) or is at capacity and no longer admitting (1)
+// remaining_retries (Gauge) - Number of remaining retries until the circuit breaker reaches its concurrency limit
+// upstream_rq_retry_overflow (Counter) - Total requests not retried due to circuit breaking or exceeding the retry budget
+
+// TEST_P(AggregateIntegrationTest, CircuitBreakerMaxRetriesONE) {
+//   setDownstreamProtocol(Http::CodecType::HTTP2);
+
+//   config_helper_.addConfigModifier([this](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
+//     auto* static_resources = bootstrap.mutable_static_resources();
+//     auto* listener = static_resources->mutable_listeners(0);
+//     auto* filter_chain = listener->mutable_filter_chains(0);
+//     auto* filter = filter_chain->mutable_filters(0);
+//     envoy::extensions::filters::network::http_connection_manager::v3::HttpConnectionManager
+//         http_connection_manager;
+//     filter->mutable_typed_config()->UnpackTo(&http_connection_manager);
+//     auto* virtual_host = http_connection_manager.mutable_route_config()->mutable_virtual_hosts(0);
+//     auto* aggregate_cluster_route = virtual_host->mutable_routes(2);
+//     auto* cluster1_route = virtual_host->mutable_routes(0);
+//     aggregate_cluster_route->mutable_route()->mutable_retry_policy()->clear_retry_priority();
+//     // adjust the retry policy on both the /aggregatecluster and /cluster1 routes
+//     aggregate_cluster_route->mutable_route()->mutable_retry_policy()->mutable_retry_on()->assign(
+//         "5xx");
+//     cluster1_route->mutable_route()->mutable_retry_policy()->mutable_retry_on()->assign("5xx");
+//     // !!! allow the cluster1 route to retry 3 times
+//     cluster1_route->mutable_route()->mutable_retry_policy()->mutable_num_retries()->set_value(3);
+//     filter->mutable_typed_config()->PackFrom(http_connection_manager);
+
+//     auto* aggregate_cluster = static_resources->mutable_clusters(1);
+//     reduceAggregateClustersListToOneCluster(*aggregate_cluster);
+//     // !!! 1 max_retries
+//     setCircuitBreakerLimits(*aggregate_cluster, CircuitBreakerLimits{}.withMaxRetries(1));
+//   });
+
+//   initialize();
+
+//   // !!! 3 max_retries
+//   setCircuitBreakerLimits(cluster1_, CircuitBreakerLimits{}.withMaxRetries(3));
+
+//   EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "55", {}, {}, {}));
+//   sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster,
+//                                                              {cluster1_}, {cluster1_}, {}, "56");
+//   test_server_->waitForGaugeEq("cluster_manager.active_clusters", 3);
+
+//   // initial circuit breaker states:
+//   // the aggregate cluster circuit breaker is closed
+//   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open", 0);
+//   test_server_->waitForGaugeEq(
+//       "cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 1);
+//   test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow", 0);
+//   // the cluster1 circuit breaker is closed
+//   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open", 0);
+//   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries", 3);
+//   test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow", 0);
+
+//   codec_client_ = makeHttpConnection(lookupPort("http"));
+
+//   // send a first request to the aggregate cluster
+//   auto aggregate_cluster_response1 = codec_client_->makeHeaderOnlyRequest(
+//       Http::TestRequestHeaderMapImpl{{":method", "GET"},
+//                                      {":path", "/aggregatecluster"},
+//                                      {":scheme", "http"},
+//                                      {":authority", "host"}});
+
+//   // wait for the first request to arrive at cluster1
+//   waitForNextUpstreamRequest(FirstUpstreamIndex);
+
+//   // respond to the first request with a 503 to trigger a retry
+//   upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, true);
+
+//   // wait for the first request retry to arrive at cluster1
+//   waitForNextUpstreamRequest(FirstUpstreamIndex);
+//   auto first_request_retry = std::move(upstream_request_);
+
+//   // the aggregate cluster circuit breaker opens
+//   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open", 1);
+//   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 0);
+//   test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow", 0);
+//   // the cluster1 circuit breaker remains closed
+//   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open", 0);
+//   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries", 3);
+//   test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow", 0);
+
+//   // send a second request to the aggregate cluster
+//   auto aggregate_cluster_response2 = codec_client_->makeHeaderOnlyRequest(
+//       Http::TestRequestHeaderMapImpl{{":method", "GET"},
+//                                      {":path", "/aggregatecluster"},
+//                                      {":scheme", "http"},
+//                                      {":authority", "host"}});
+
+//   // wait for the second request to arrive at cluster1
+//   waitForNextUpstreamRequest(FirstUpstreamIndex);
+
+//   // respond to the second request with a 503 to trigger a retry
+//   upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, true);
+
+//   // the aggregate cluster circuit breaker remains open and overflows
+//   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open", 1);
+//   test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 0);
+//   test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow", 1);
+//   // the cluster1 circuit breaker remains closed
+//   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open", 0);
+//   test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries", 3);
+//   test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow", 0);
+
+//   std::cout << "FIRST PART OF THE TEST ABOVE IS OK" << std::endl;
+
+//   std::cout << "NOW CHECK DIRECT REQUESTS TO /cluster1 WHILST THE AGGREGATE CIRCUIT BREAKER IS OPEN" << std::endl;
+  
+//   printStatsForMaxRetries("BEFORE STARTING DIRECT REQUESTS TO /cluster1");
+
+//   // send a request directly to cluster1 to verify its circuit breaker operates independently
+//   auto cluster1_response1 = codec_client_->makeHeaderOnlyRequest(Http::TestRequestHeaderMapImpl{
+//       {":method", "GET"}, {":path", "/cluster1"}, {":scheme", "http"}, {":authority", "host"}});
+
+//   // wait for the direct request to arrive at cluster1
+//   waitForNextUpstreamRequest(FirstUpstreamIndex);
+
+//   printStatsForMaxRetries("AFTER WAIT FOR REQUEST1 TO REACH UPSTREAM");
+
+//   // respond with a 503 to trigger a retry
+//   upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, true);
+
+//   printStatsForMaxRetries("AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1");
+
+//   // wait for the first retry of the direct request
+//   waitForNextUpstreamRequest(FirstUpstreamIndex);
+
+//   printStatsForMaxRetries("AFTER WAIT FOR REQUEST1-RETRY1 TO REACH UPSTREAM");
+
+//   // respond with another 503 to trigger a second retry
+//   upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, true);
+
+//   printStatsForMaxRetries("AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY1");
+
+//   // wait for the second retry of the direct request
+//   waitForNextUpstreamRequest(FirstUpstreamIndex);
+
+//   printStatsForMaxRetries("AFTER WAIT FOR REQUEST1-RETRY2 TO REACH UPSTREAM");
+
+//   // respond with another 503 to trigger a third retry
+//   upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, true);
+
+//   printStatsForMaxRetries("AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY2");
+
+//   // wait for the third retry of the direct request
+//   waitForNextUpstreamRequest(FirstUpstreamIndex);
+
+//   printStatsForMaxRetries("AFTER WAIT FOR REQUEST1-RETRY3 TO REACH UPSTREAM");
+
+//   // test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open", 0);
+//   // test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries",  1); 
+//   // test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow", 0);
+
+//   // auto direct_request_third_retry = std::move(upstream_request_);
+
+//   // // the aggregate cluster circuit breaker remains open
+//   // test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open", 1);
+//   // test_server_->waitForGaugeEq( "cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 0);
+//   // test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow", 1);
+//   // // the cluster1 circuit breaker opens after reaching its own retry limit
+//   // test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open", 1);
+//   // test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries", 0); 
+//   // test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow", 0);
+
+//   // // send another direct request to cluster1 to verify its circuit breaker is now open
+//   // auto cluster1_response2 = codec_client_->makeHeaderOnlyRequest(Http::TestRequestHeaderMapImpl{
+//   //     {":method", "GET"}, {":path", "/cluster1"}, {":scheme", "http"}, {":authority", "host"}});
+
+//   // // wait for the request to arrive at cluster1
+//   // waitForNextUpstreamRequest(FirstUpstreamIndex);
+//   // // respond with a 503 to trigger a retry attempt
+//   // upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, true);
+
+//   // std::cout << "AFTER RESPONDING TO REQUEST2 WITH 503 TO TRIGGER RETRY" << std::endl;
+
+//   // // the cluster1 circuit breaker should now overflow
+//   // test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow", 1);
+
+//   // // respond to all the pending requests
+//   // // respond to the first request to the aggregate cluster
+//   // first_request_retry->encodeHeaders(default_response_headers_, true);
+//   // ASSERT_TRUE(aggregate_cluster_response1->waitForEndStream());
+//   // EXPECT_EQ("200", aggregate_cluster_response1->headers().getStatusValue());
+
+//   // // the second aggregate cluster request should have failed with 503 due to retry overflow
+//   // ASSERT_TRUE(aggregate_cluster_response2->waitForEndStream());
+//   // EXPECT_EQ("503", aggregate_cluster_response2->headers().getStatusValue());
+
+//   // // respond to the direct request to cluster1
+//   // direct_request_third_retry->encodeHeaders(default_response_headers_, true);
+//   // ASSERT_TRUE(cluster1_response1->waitForEndStream());
+//   // EXPECT_EQ("200", cluster1_response1->headers().getStatusValue());
+
+//   // // the second direct request should have failed with 503 due to retry overflow
+//   // ASSERT_TRUE(cluster1_response2->waitForEndStream());
+//   // EXPECT_EQ("503", cluster1_response2->headers().getStatusValue());
+
+//   // // after all the requests complete both the circuit breakers should close
+//   // test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open",
+//   //                              0);
+//   // test_server_->waitForGaugeEq(
+//   //     "cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 1);
+//   // test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open", 0);
+//   // test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries",
+//   // 3);
+
+//   // std::cout << "DID WE REACH HERE ?? THE END" << std::endl;
+
+//   cleanupUpstreamAndDownstream();
+// }
+
+// [ RUN      ] IpVersions/AggregateIntegrationTest.CircuitBreakerMaxRetriesAggregateClusterOnly/3
+// FIRST PART OF THE TEST ABOVE IS OK
+// NOW CHECK DIRECT REQUESTS TO /cluster1 WHILST THE AGGREGATE CIRCUIT BREAKER IS OPEN
+// --------------------
+// BEFORE STARTING DIRECT REQUESTS TO /cluster1 aggregate_cluster rq_retry_open: 1
+// BEFORE STARTING DIRECT REQUESTS TO /cluster1 aggregate_cluster remaining_retries: 0
+// BEFORE STARTING DIRECT REQUESTS TO /cluster1 aggregate_cluster upstream_rq_retry_overflow: 1
+// BEFORE STARTING DIRECT REQUESTS TO /cluster1 cluster_1 rq_retry_open: 0
+// BEFORE STARTING DIRECT REQUESTS TO /cluster1 cluster_1 remaining_retries: 3
+// BEFORE STARTING DIRECT REQUESTS TO /cluster1 cluster_1 upstream_rq_retry: 0
+// BEFORE STARTING DIRECT REQUESTS TO /cluster1 cluster_1 upstream_rq_retry_success: 0
+// BEFORE STARTING DIRECT REQUESTS TO /cluster1 cluster_1 upstream_rq_retry_overflow: 0
+// BEFORE STARTING DIRECT REQUESTS TO /cluster1 cluster_1 upstream_rq_retry_limit_exceeded: 0
+// BEFORE STARTING DIRECT REQUESTS TO /cluster1 cluster_1 upstream_rq_retry_backoff_exponential: 0
+// BEFORE STARTING DIRECT REQUESTS TO /cluster1 cluster_1 upstream_rq_retry_backoff_ratelimited: 0
+// BEFORE STARTING DIRECT REQUESTS TO /cluster1 cluster_1 upstream_rq_total: 3
+// BEFORE STARTING DIRECT REQUESTS TO /cluster1 cluster_1 upstream_rq_active: 1
+// BEFORE STARTING DIRECT REQUESTS TO /cluster1 cluster_1 upstream_rq_cancelled: 0
+// BEFORE STARTING DIRECT REQUESTS TO /cluster1 cluster_1 upstream_rq_timeout: 0
+// BEFORE STARTING DIRECT REQUESTS TO /cluster1 cluster_1 upstream_rq_completed: 0
+// BEFORE STARTING DIRECT REQUESTS TO /cluster1 cluster_1 upstream_rq_max_duration_reached: 0
+// BEFORE STARTING DIRECT REQUESTS TO /cluster1 cluster_1 upstream_rq_per_try_timeout: 0
+// BEFORE STARTING DIRECT REQUESTS TO /cluster1 cluster_1 upstream_rq_rx_reset: 0
+// BEFORE STARTING DIRECT REQUESTS TO /cluster1 cluster_1 upstream_rq_tx_reset: 0
+// BEFORE STARTING DIRECT REQUESTS TO /cluster1 cluster_1 upstream_cx_active: 1
+// BEFORE STARTING DIRECT REQUESTS TO /cluster1 cluster_1 upstream_cx_total: 1
+// --------------------
+// AFTER WAIT FOR REQUEST1 TO REACH UPSTREAM aggregate_cluster rq_retry_open: 1
+// AFTER WAIT FOR REQUEST1 TO REACH UPSTREAM aggregate_cluster remaining_retries: 0
+// AFTER WAIT FOR REQUEST1 TO REACH UPSTREAM aggregate_cluster upstream_rq_retry_overflow: 1
+// AFTER WAIT FOR REQUEST1 TO REACH UPSTREAM cluster_1 rq_retry_open: 0
+// AFTER WAIT FOR REQUEST1 TO REACH UPSTREAM cluster_1 remaining_retries: 3
+// AFTER WAIT FOR REQUEST1 TO REACH UPSTREAM cluster_1 upstream_rq_retry: 0
+// AFTER WAIT FOR REQUEST1 TO REACH UPSTREAM cluster_1 upstream_rq_retry_success: 0
+// AFTER WAIT FOR REQUEST1 TO REACH UPSTREAM cluster_1 upstream_rq_retry_overflow: 0
+// AFTER WAIT FOR REQUEST1 TO REACH UPSTREAM cluster_1 upstream_rq_retry_limit_exceeded: 0
+// AFTER WAIT FOR REQUEST1 TO REACH UPSTREAM cluster_1 upstream_rq_retry_backoff_exponential: 0
+// AFTER WAIT FOR REQUEST1 TO REACH UPSTREAM cluster_1 upstream_rq_retry_backoff_ratelimited: 0
+// AFTER WAIT FOR REQUEST1 TO REACH UPSTREAM cluster_1 upstream_rq_total: 4
+// AFTER WAIT FOR REQUEST1 TO REACH UPSTREAM cluster_1 upstream_rq_active: 2
+// AFTER WAIT FOR REQUEST1 TO REACH UPSTREAM cluster_1 upstream_rq_cancelled: 0
+// AFTER WAIT FOR REQUEST1 TO REACH UPSTREAM cluster_1 upstream_rq_timeout: 0
+// AFTER WAIT FOR REQUEST1 TO REACH UPSTREAM cluster_1 upstream_rq_completed: 0
+// AFTER WAIT FOR REQUEST1 TO REACH UPSTREAM cluster_1 upstream_rq_max_duration_reached: 0
+// AFTER WAIT FOR REQUEST1 TO REACH UPSTREAM cluster_1 upstream_rq_per_try_timeout: 0
+// AFTER WAIT FOR REQUEST1 TO REACH UPSTREAM cluster_1 upstream_rq_rx_reset: 0
+// AFTER WAIT FOR REQUEST1 TO REACH UPSTREAM cluster_1 upstream_rq_tx_reset: 0
+// AFTER WAIT FOR REQUEST1 TO REACH UPSTREAM cluster_1 upstream_cx_active: 1
+// AFTER WAIT FOR REQUEST1 TO REACH UPSTREAM cluster_1 upstream_cx_total: 1
+// --------------------
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1 aggregate_cluster rq_retry_open: 1
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1 aggregate_cluster remaining_retries: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1 aggregate_cluster upstream_rq_retry_overflow: 1
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1 cluster_1 rq_retry_open: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1 cluster_1 remaining_retries: 2
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1 cluster_1 upstream_rq_retry: 1
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1 cluster_1 upstream_rq_retry_success: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1 cluster_1 upstream_rq_retry_overflow: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1 cluster_1 upstream_rq_retry_limit_exceeded: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1 cluster_1 upstream_rq_retry_backoff_exponential: 1
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1 cluster_1 upstream_rq_retry_backoff_ratelimited: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1 cluster_1 upstream_rq_total: 4
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1 cluster_1 upstream_rq_active: 1
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1 cluster_1 upstream_rq_cancelled: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1 cluster_1 upstream_rq_timeout: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1 cluster_1 upstream_rq_completed: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1 cluster_1 upstream_rq_max_duration_reached: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1 cluster_1 upstream_rq_per_try_timeout: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1 cluster_1 upstream_rq_rx_reset: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1 cluster_1 upstream_rq_tx_reset: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1 cluster_1 upstream_cx_active: 1
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1 cluster_1 upstream_cx_total: 1
+// --------------------
+// AFTER WAIT FOR REQUEST1-RETRY1 TO REACH UPSTREAM aggregate_cluster rq_retry_open: 1
+// AFTER WAIT FOR REQUEST1-RETRY1 TO REACH UPSTREAM aggregate_cluster remaining_retries: 0
+// AFTER WAIT FOR REQUEST1-RETRY1 TO REACH UPSTREAM aggregate_cluster upstream_rq_retry_overflow: 1
+// AFTER WAIT FOR REQUEST1-RETRY1 TO REACH UPSTREAM cluster_1 rq_retry_open: 0
+// AFTER WAIT FOR REQUEST1-RETRY1 TO REACH UPSTREAM cluster_1 remaining_retries: 2
+// AFTER WAIT FOR REQUEST1-RETRY1 TO REACH UPSTREAM cluster_1 upstream_rq_retry: 1
+// AFTER WAIT FOR REQUEST1-RETRY1 TO REACH UPSTREAM cluster_1 upstream_rq_retry_success: 0
+// AFTER WAIT FOR REQUEST1-RETRY1 TO REACH UPSTREAM cluster_1 upstream_rq_retry_overflow: 0
+// AFTER WAIT FOR REQUEST1-RETRY1 TO REACH UPSTREAM cluster_1 upstream_rq_retry_limit_exceeded: 0
+// AFTER WAIT FOR REQUEST1-RETRY1 TO REACH UPSTREAM cluster_1 upstream_rq_retry_backoff_exponential: 1
+// AFTER WAIT FOR REQUEST1-RETRY1 TO REACH UPSTREAM cluster_1 upstream_rq_retry_backoff_ratelimited: 0
+// AFTER WAIT FOR REQUEST1-RETRY1 TO REACH UPSTREAM cluster_1 upstream_rq_total: 5
+// AFTER WAIT FOR REQUEST1-RETRY1 TO REACH UPSTREAM cluster_1 upstream_rq_active: 2
+// AFTER WAIT FOR REQUEST1-RETRY1 TO REACH UPSTREAM cluster_1 upstream_rq_cancelled: 0
+// AFTER WAIT FOR REQUEST1-RETRY1 TO REACH UPSTREAM cluster_1 upstream_rq_timeout: 0
+// AFTER WAIT FOR REQUEST1-RETRY1 TO REACH UPSTREAM cluster_1 upstream_rq_completed: 0
+// AFTER WAIT FOR REQUEST1-RETRY1 TO REACH UPSTREAM cluster_1 upstream_rq_max_duration_reached: 0
+// AFTER WAIT FOR REQUEST1-RETRY1 TO REACH UPSTREAM cluster_1 upstream_rq_per_try_timeout: 0
+// AFTER WAIT FOR REQUEST1-RETRY1 TO REACH UPSTREAM cluster_1 upstream_rq_rx_reset: 0
+// AFTER WAIT FOR REQUEST1-RETRY1 TO REACH UPSTREAM cluster_1 upstream_rq_tx_reset: 0
+// AFTER WAIT FOR REQUEST1-RETRY1 TO REACH UPSTREAM cluster_1 upstream_cx_active: 1
+// AFTER WAIT FOR REQUEST1-RETRY1 TO REACH UPSTREAM cluster_1 upstream_cx_total: 1
+// --------------------
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY1 aggregate_cluster rq_retry_open: 1
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY1 aggregate_cluster remaining_retries: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY1 aggregate_cluster upstream_rq_retry_overflow: 1
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY1 cluster_1 rq_retry_open: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY1 cluster_1 remaining_retries: 2
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY1 cluster_1 upstream_rq_retry: 2
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY1 cluster_1 upstream_rq_retry_success: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY1 cluster_1 upstream_rq_retry_overflow: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY1 cluster_1 upstream_rq_retry_limit_exceeded: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY1 cluster_1 upstream_rq_retry_backoff_exponential: 2
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY1 cluster_1 upstream_rq_retry_backoff_ratelimited: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY1 cluster_1 upstream_rq_total: 5
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY1 cluster_1 upstream_rq_active: 1
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY1 cluster_1 upstream_rq_cancelled: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY1 cluster_1 upstream_rq_timeout: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY1 cluster_1 upstream_rq_completed: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY1 cluster_1 upstream_rq_max_duration_reached: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY1 cluster_1 upstream_rq_per_try_timeout: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY1 cluster_1 upstream_rq_rx_reset: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY1 cluster_1 upstream_rq_tx_reset: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY1 cluster_1 upstream_cx_active: 1
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY1 cluster_1 upstream_cx_total: 1
+// --------------------
+// AFTER WAIT FOR REQUEST1-RETRY2 TO REACH UPSTREAM aggregate_cluster rq_retry_open: 1
+// AFTER WAIT FOR REQUEST1-RETRY2 TO REACH UPSTREAM aggregate_cluster remaining_retries: 0
+// AFTER WAIT FOR REQUEST1-RETRY2 TO REACH UPSTREAM aggregate_cluster upstream_rq_retry_overflow: 1
+// AFTER WAIT FOR REQUEST1-RETRY2 TO REACH UPSTREAM cluster_1 rq_retry_open: 0
+// AFTER WAIT FOR REQUEST1-RETRY2 TO REACH UPSTREAM cluster_1 remaining_retries: 2
+// AFTER WAIT FOR REQUEST1-RETRY2 TO REACH UPSTREAM cluster_1 upstream_rq_retry: 2
+// AFTER WAIT FOR REQUEST1-RETRY2 TO REACH UPSTREAM cluster_1 upstream_rq_retry_success: 0
+// AFTER WAIT FOR REQUEST1-RETRY2 TO REACH UPSTREAM cluster_1 upstream_rq_retry_overflow: 0
+// AFTER WAIT FOR REQUEST1-RETRY2 TO REACH UPSTREAM cluster_1 upstream_rq_retry_limit_exceeded: 0
+// AFTER WAIT FOR REQUEST1-RETRY2 TO REACH UPSTREAM cluster_1 upstream_rq_retry_backoff_exponential: 2
+// AFTER WAIT FOR REQUEST1-RETRY2 TO REACH UPSTREAM cluster_1 upstream_rq_retry_backoff_ratelimited: 0
+// AFTER WAIT FOR REQUEST1-RETRY2 TO REACH UPSTREAM cluster_1 upstream_rq_total: 6
+// AFTER WAIT FOR REQUEST1-RETRY2 TO REACH UPSTREAM cluster_1 upstream_rq_active: 2
+// AFTER WAIT FOR REQUEST1-RETRY2 TO REACH UPSTREAM cluster_1 upstream_rq_cancelled: 0
+// AFTER WAIT FOR REQUEST1-RETRY2 TO REACH UPSTREAM cluster_1 upstream_rq_timeout: 0
+// AFTER WAIT FOR REQUEST1-RETRY2 TO REACH UPSTREAM cluster_1 upstream_rq_completed: 0
+// AFTER WAIT FOR REQUEST1-RETRY2 TO REACH UPSTREAM cluster_1 upstream_rq_max_duration_reached: 0
+// AFTER WAIT FOR REQUEST1-RETRY2 TO REACH UPSTREAM cluster_1 upstream_rq_per_try_timeout: 0
+// AFTER WAIT FOR REQUEST1-RETRY2 TO REACH UPSTREAM cluster_1 upstream_rq_rx_reset: 0
+// AFTER WAIT FOR REQUEST1-RETRY2 TO REACH UPSTREAM cluster_1 upstream_rq_tx_reset: 0
+// AFTER WAIT FOR REQUEST1-RETRY2 TO REACH UPSTREAM cluster_1 upstream_cx_active: 1
+// AFTER WAIT FOR REQUEST1-RETRY2 TO REACH UPSTREAM cluster_1 upstream_cx_total: 1
+// --------------------
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY2 aggregate_cluster rq_retry_open: 1
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY2 aggregate_cluster remaining_retries: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY2 aggregate_cluster upstream_rq_retry_overflow: 1
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY2 cluster_1 rq_retry_open: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY2 cluster_1 remaining_retries: 2
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY2 cluster_1 upstream_rq_retry: 3
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY2 cluster_1 upstream_rq_retry_success: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY2 cluster_1 upstream_rq_retry_overflow: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY2 cluster_1 upstream_rq_retry_limit_exceeded: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY2 cluster_1 upstream_rq_retry_backoff_exponential: 3
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY2 cluster_1 upstream_rq_retry_backoff_ratelimited: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY2 cluster_1 upstream_rq_total: 6
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY2 cluster_1 upstream_rq_active: 1
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY2 cluster_1 upstream_rq_cancelled: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY2 cluster_1 upstream_rq_timeout: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY2 cluster_1 upstream_rq_completed: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY2 cluster_1 upstream_rq_max_duration_reached: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY2 cluster_1 upstream_rq_per_try_timeout: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY2 cluster_1 upstream_rq_rx_reset: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY2 cluster_1 upstream_rq_tx_reset: 0
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY2 cluster_1 upstream_cx_active: 1
+// AFTER UPSTREAM ENCODE HEADERS 503 ON REQUEST1-RETRY2 cluster_1 upstream_cx_total: 1
+// --------------------
+// AFTER WAIT FOR REQUEST1-RETRY3 TO REACH UPSTREAM aggregate_cluster rq_retry_open: 1
+// AFTER WAIT FOR REQUEST1-RETRY3 TO REACH UPSTREAM aggregate_cluster remaining_retries: 0
+// AFTER WAIT FOR REQUEST1-RETRY3 TO REACH UPSTREAM aggregate_cluster upstream_rq_retry_overflow: 1
+// AFTER WAIT FOR REQUEST1-RETRY3 TO REACH UPSTREAM cluster_1 rq_retry_open: 0
+// AFTER WAIT FOR REQUEST1-RETRY3 TO REACH UPSTREAM cluster_1 remaining_retries: 2
+// AFTER WAIT FOR REQUEST1-RETRY3 TO REACH UPSTREAM cluster_1 upstream_rq_retry: 3
+// AFTER WAIT FOR REQUEST1-RETRY3 TO REACH UPSTREAM cluster_1 upstream_rq_retry_success: 0
+// AFTER WAIT FOR REQUEST1-RETRY3 TO REACH UPSTREAM cluster_1 upstream_rq_retry_overflow: 0
+// AFTER WAIT FOR REQUEST1-RETRY3 TO REACH UPSTREAM cluster_1 upstream_rq_retry_limit_exceeded: 0
+// AFTER WAIT FOR REQUEST1-RETRY3 TO REACH UPSTREAM cluster_1 upstream_rq_retry_backoff_exponential: 3
+// AFTER WAIT FOR REQUEST1-RETRY3 TO REACH UPSTREAM cluster_1 upstream_rq_retry_backoff_ratelimited: 0
+// AFTER WAIT FOR REQUEST1-RETRY3 TO REACH UPSTREAM cluster_1 upstream_rq_total: 7
+// AFTER WAIT FOR REQUEST1-RETRY3 TO REACH UPSTREAM cluster_1 upstream_rq_active: 2
+// AFTER WAIT FOR REQUEST1-RETRY3 TO REACH UPSTREAM cluster_1 upstream_rq_cancelled: 0
+// AFTER WAIT FOR REQUEST1-RETRY3 TO REACH UPSTREAM cluster_1 upstream_rq_timeout: 0
+// AFTER WAIT FOR REQUEST1-RETRY3 TO REACH UPSTREAM cluster_1 upstream_rq_completed: 0
+// AFTER WAIT FOR REQUEST1-RETRY3 TO REACH UPSTREAM cluster_1 upstream_rq_max_duration_reached: 0
+// AFTER WAIT FOR REQUEST1-RETRY3 TO REACH UPSTREAM cluster_1 upstream_rq_per_try_timeout: 0
+// AFTER WAIT FOR REQUEST1-RETRY3 TO REACH UPSTREAM cluster_1 upstream_rq_rx_reset: 0
+// AFTER WAIT FOR REQUEST1-RETRY3 TO REACH UPSTREAM cluster_1 upstream_rq_tx_reset: 0
+// AFTER WAIT FOR REQUEST1-RETRY3 TO REACH UPSTREAM cluster_1 upstream_cx_active: 1
+// AFTER WAIT FOR REQUEST1-RETRY3 TO REACH UPSTREAM cluster_1 upstream_cx_total: 1
+
+// Tests that the max_retries circuit breaker on the aggregate cluster works independently of
+// the underlying clusters. When retries exceed the configured limit on the aggregate cluster,
+// its circuit breaker opens and prevents additional retries through the aggregate cluster.
+// However, the underlying cluster's circuit breaker remains unaffected, allowing direct requests
+// to the underlying cluster to still perform retries.
+TEST_P(AggregateIntegrationTest, CircuitBreakerMaxRetriesTWO) {
+  setDownstreamProtocol(Http::CodecType::HTTP2);
+
+  config_helper_.addConfigModifier([this](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
+    auto* static_resources = bootstrap.mutable_static_resources();
+    auto* listener = static_resources->mutable_listeners(0);
+    auto* filter_chain = listener->mutable_filter_chains(0);
+    auto* filter = filter_chain->mutable_filters(0);
+    envoy::extensions::filters::network::http_connection_manager::v3::HttpConnectionManager
+        http_connection_manager;
+    filter->mutable_typed_config()->UnpackTo(&http_connection_manager);
+    auto* virtual_host = http_connection_manager.mutable_route_config()->mutable_virtual_hosts(0);
+    auto* aggregate_cluster_route = virtual_host->mutable_routes(2);
+    auto* cluster1_route = virtual_host->mutable_routes(0);
+    aggregate_cluster_route->mutable_route()->mutable_retry_policy()->clear_retry_priority();
+    
+    aggregate_cluster_route->mutable_route()->mutable_retry_policy()->mutable_retry_on()->assign("5xx");
+    cluster1_route->mutable_route()->mutable_retry_policy()->mutable_retry_on()->assign("5xx");
+    
+    // set cluster1 route to retry 3 times
+    cluster1_route->mutable_route()->mutable_retry_policy()->mutable_num_retries()->set_value(3);
+    
+    // Set a short retry timeout to make retries happen quickly
+    cluster1_route->mutable_route()->mutable_retry_policy()->mutable_per_try_timeout()->set_seconds(1);
+    aggregate_cluster_route->mutable_route()->mutable_retry_policy()->mutable_per_try_timeout()->set_seconds(1);
+    
+    filter->mutable_typed_config()->PackFrom(http_connection_manager);
+
+    auto* aggregate_cluster = static_resources->mutable_clusters(1);
+    reduceAggregateClustersListToOneCluster(*aggregate_cluster);
+    // max_retries 1
+    setCircuitBreakerLimits(*aggregate_cluster, CircuitBreakerLimits{}.withMaxRetries(1));
+  });
+
+  initialize();
+
+  // max_retries 3
+  setCircuitBreakerLimits(cluster1_, CircuitBreakerLimits{}.withMaxRetries(3));
+  
+  // !!! MORE concurrent streams (probably remove this later)
+  setMaxConcurrentStreams(cluster1_, 100);
+
+  EXPECT_TRUE(compareDiscoveryRequest(Config::TypeUrl::get().Cluster, "55", {}, {}, {}));
+  sendDiscoveryResponse<envoy::config::cluster::v3::Cluster>(Config::TypeUrl::get().Cluster,
+                                                             {cluster1_}, {cluster1_}, {}, "56");
+  test_server_->waitForGaugeEq("cluster_manager.active_clusters", 3);
+
+  // initial circuit breaker states
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open", 0);
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 1); // 1 retry
+  test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow", 0);  
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open", 0);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries", 3); // 3 retries
+  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow", 0);
+
+  // this will now do multiple concurrent streams
+  codec_client_ = makeHttpConnection(lookupPort("http"));
+
+  // send a request to the aggregate cluster
+  auto aggregate_cluster_response1 = codec_client_->makeHeaderOnlyRequest(
+      Http::TestRequestHeaderMapImpl{{":method", "GET"},
+                                     {":path", "/aggregatecluster"},
+                                     {":scheme", "http"},
+                                     {":authority", "host"}});
+
+  // wait for the request to arrive at cluster1
+  waitForNextUpstreamRequest(FirstUpstreamIndex);
+  
+  // respond with 503 to trigger a retry
+  upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, true);
+
+  // wait for the retry to arrive
+  waitForNextUpstreamRequest(FirstUpstreamIndex);
+   
+  // aggregate cluster circuit breaker opens
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open", 1);
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 0);
+  test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow", 0);
+  // cluster1 circuit breaker unaffected
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open", 0);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries", 3);
+  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow", 0);
+
+  // send a second request to the aggregate cluster
+  auto aggregate_cluster_response2 = codec_client_->makeHeaderOnlyRequest(
+      Http::TestRequestHeaderMapImpl{{":method", "GET"},
+                                     {":path", "/aggregatecluster"},
+                                     {":scheme", "http"},
+                                     {":authority", "host"}});
+
+  // wait for the second request to arrive
+  waitForNextUpstreamRequest(FirstUpstreamIndex);
+  
+  // respond with 503 to trigger a retry#']
+  upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, true);
+
+  // aggregate cluster circuit breaker stays open and overflows
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open", 1);
+  test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 0);
+  test_server_->waitForCounterEq("cluster.aggregate_cluster.upstream_rq_retry_overflow", 1);
+  // cluster1 circuit breaker unaffected
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open", 0);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries", 3);
+  test_server_->waitForCounterEq("cluster.cluster_1.upstream_rq_retry_overflow", 0);
+
+  // ----------------------
+  
+  // now directly test the cluster1 circuit breaker WHILST the aggregate cluster circuit breaker is OPEN
+  
+  // !! we need to create multiple CONCURRENT requests to cluster1
+
+  std::vector<IntegrationStreamDecoderPtr> cluster1_responses;
+  
+  // send four requests so we overflow the max_retries 3
+  for (int i = 0; i < 4; i++) {
+    cluster1_responses.push_back(codec_client_->makeHeaderOnlyRequest(
+        Http::TestRequestHeaderMapImpl{{":method", "GET"},
+                                      {":path", "/cluster1"},
+                                      {":scheme", "http"},
+                                      {":authority", "host"}}));
+    printStatsForMaxRetries("SEND REQUEST " + std::to_string(i));
+  }
+  
+  // wait for all four requests to reach cluster1, each time responding with 503
+  for (int i = 0; i < 4; i++) {
+    waitForNextUpstreamRequest(FirstUpstreamIndex);
+    upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, true);
+    printStatsForMaxRetries("REQUEST " + std::to_string(i) + " REACH UPSTREAM + RESPOND");
+  }
+  
+  // wait for 3 retries to reach cluster1
+  for (int i = 0; i < 3; i++) {
+    waitForNextUpstreamRequest(FirstUpstreamIndex);
+    upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "503"}}, true);
+    printStatsForMaxRetries("RETRY " + std::to_string(i) + " REACH UPSTREAM + RESPOND");
+  }
+  
+  // this SHOULD overflow...
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open", 1);
+  test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries", 0);
+  test_server_->waitForCounterGe("cluster.cluster_1.upstream_rq_retry_overflow", 1);
+   
+  // // complete the first aggregate cluster request
+  // waitForNextUpstreamRequest(FirstUpstreamIndex);
+  // upstream_request_->encodeHeaders(default_response_headers_, true);
+  
+  // ASSERT_TRUE(aggregate_cluster_response1->waitForEndStream());
+  // EXPECT_EQ("200", aggregate_cluster_response1->headers().getStatusValue());
+  
+  // ASSERT_TRUE(aggregate_cluster_response2->waitForEndStream());
+  // EXPECT_EQ("503", aggregate_cluster_response2->headers().getStatusValue());
+  
+  // // complete all the pending requests
+  // for (size_t i = 0; i < 5; i++) {
+  //   if (i < cluster1_responses.size()) {
+  //     waitForNextUpstreamRequest(FirstUpstreamIndex);
+  //     upstream_request_->encodeHeaders(default_response_headers_, true);
+  //   }
+  // }
+  
+  // // wait for all responses to complete
+  // for (auto& response : cluster1_responses) {
+  //   ASSERT_TRUE(response->waitForEndStream());
+  // }
+  
+  // ASSERT_TRUE(additional_response->waitForEndStream());
+  
+  // // after all the requests complete, both circuit breakers should close
+  // test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.rq_retry_open", 0);
+  // test_server_->waitForGaugeEq("cluster.aggregate_cluster.circuit_breakers.default.remaining_retries", 1);
+  // test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.rq_retry_open", 0);
+  // test_server_->waitForGaugeEq("cluster.cluster_1.circuit_breakers.default.remaining_retries", 3);
+
+  cleanupUpstreamAndDownstream();
+}
+
+// [ RUN      ] IpVersions/AggregateIntegrationTest.CircuitBreakerMaxRetriesTWO/3
+// --------------------
+// SEND REQUEST 0 aggregate_cluster rq_retry_open: 1
+// SEND REQUEST 0 aggregate_cluster remaining_retries: 0
+// SEND REQUEST 0 aggregate_cluster upstream_rq_retry_overflow: 1
+// SEND REQUEST 0 cluster_1 rq_retry_open: 0
+// SEND REQUEST 0 cluster_1 remaining_retries: 3
+// SEND REQUEST 0 cluster_1 upstream_rq_retry_overflow: 0
+// --------------------
+// SEND REQUEST 1 aggregate_cluster rq_retry_open: 1
+// SEND REQUEST 1 aggregate_cluster remaining_retries: 0
+// SEND REQUEST 1 aggregate_cluster upstream_rq_retry_overflow: 1
+// SEND REQUEST 1 cluster_1 rq_retry_open: 0
+// SEND REQUEST 1 cluster_1 remaining_retries: 3
+// SEND REQUEST 1 cluster_1 upstream_rq_retry_overflow: 0
+// --------------------
+// SEND REQUEST 2 aggregate_cluster rq_retry_open: 1
+// SEND REQUEST 2 aggregate_cluster remaining_retries: 0
+// SEND REQUEST 2 aggregate_cluster upstream_rq_retry_overflow: 1
+// SEND REQUEST 2 cluster_1 rq_retry_open: 0
+// SEND REQUEST 2 cluster_1 remaining_retries: 3
+// SEND REQUEST 2 cluster_1 upstream_rq_retry_overflow: 0
+// --------------------
+// SEND REQUEST 3 aggregate_cluster rq_retry_open: 1
+// SEND REQUEST 3 aggregate_cluster remaining_retries: 0
+// SEND REQUEST 3 aggregate_cluster upstream_rq_retry_overflow: 1
+// SEND REQUEST 3 cluster_1 rq_retry_open: 0
+// SEND REQUEST 3 cluster_1 remaining_retries: 3
+// SEND REQUEST 3 cluster_1 upstream_rq_retry_overflow: 0
+// --------------------
+// REQUEST 0 REACH UPSTREAM + RESPOND aggregate_cluster rq_retry_open: 1
+// REQUEST 0 REACH UPSTREAM + RESPOND aggregate_cluster remaining_retries: 0
+// REQUEST 0 REACH UPSTREAM + RESPOND aggregate_cluster upstream_rq_retry_overflow: 1
+// REQUEST 0 REACH UPSTREAM + RESPOND cluster_1 rq_retry_open: 0
+// REQUEST 0 REACH UPSTREAM + RESPOND cluster_1 remaining_retries: 2
+// REQUEST 0 REACH UPSTREAM + RESPOND cluster_1 upstream_rq_retry_overflow: 0
+// --------------------
+// REQUEST 1 REACH UPSTREAM + RESPOND aggregate_cluster rq_retry_open: 1
+// REQUEST 1 REACH UPSTREAM + RESPOND aggregate_cluster remaining_retries: 0
+// REQUEST 1 REACH UPSTREAM + RESPOND aggregate_cluster upstream_rq_retry_overflow: 1
+// REQUEST 1 REACH UPSTREAM + RESPOND cluster_1 rq_retry_open: 0
+// REQUEST 1 REACH UPSTREAM + RESPOND cluster_1 remaining_retries: 1
+// REQUEST 1 REACH UPSTREAM + RESPOND cluster_1 upstream_rq_retry_overflow: 0
+// --------------------
+// REQUEST 2 REACH UPSTREAM + RESPOND aggregate_cluster rq_retry_open: 1
+// REQUEST 2 REACH UPSTREAM + RESPOND aggregate_cluster remaining_retries: 0
+// REQUEST 2 REACH UPSTREAM + RESPOND aggregate_cluster upstream_rq_retry_overflow: 1
+// REQUEST 2 REACH UPSTREAM + RESPOND cluster_1 rq_retry_open: 1
+// REQUEST 2 REACH UPSTREAM + RESPOND cluster_1 remaining_retries: 0
+// REQUEST 2 REACH UPSTREAM + RESPOND cluster_1 upstream_rq_retry_overflow: 0
+// --------------------
+// REQUEST 3 REACH UPSTREAM + RESPOND aggregate_cluster rq_retry_open: 1
+// REQUEST 3 REACH UPSTREAM + RESPOND aggregate_cluster remaining_retries: 0
+// REQUEST 3 REACH UPSTREAM + RESPOND aggregate_cluster upstream_rq_retry_overflow: 1
+// REQUEST 3 REACH UPSTREAM + RESPOND cluster_1 rq_retry_open: 1
+// REQUEST 3 REACH UPSTREAM + RESPOND cluster_1 remaining_retries: 0
+// REQUEST 3 REACH UPSTREAM + RESPOND cluster_1 upstream_rq_retry_overflow: 1
+// --------------------
+// RETRY 0 REACH UPSTREAM + RESPOND aggregate_cluster rq_retry_open: 1
+// RETRY 0 REACH UPSTREAM + RESPOND aggregate_cluster remaining_retries: 0
+// RETRY 0 REACH UPSTREAM + RESPOND aggregate_cluster upstream_rq_retry_overflow: 1
+// RETRY 0 REACH UPSTREAM + RESPOND cluster_1 rq_retry_open: 1
+// RETRY 0 REACH UPSTREAM + RESPOND cluster_1 remaining_retries: 0
+// RETRY 0 REACH UPSTREAM + RESPOND cluster_1 upstream_rq_retry_overflow: 1
+// --------------------
+// RETRY 1 REACH UPSTREAM + RESPOND aggregate_cluster rq_retry_open: 1
+// RETRY 1 REACH UPSTREAM + RESPOND aggregate_cluster remaining_retries: 0
+// RETRY 1 REACH UPSTREAM + RESPOND aggregate_cluster upstream_rq_retry_overflow: 1
+// RETRY 1 REACH UPSTREAM + RESPOND cluster_1 rq_retry_open: 1
+// RETRY 1 REACH UPSTREAM + RESPOND cluster_1 remaining_retries: 0
+// RETRY 1 REACH UPSTREAM + RESPOND cluster_1 upstream_rq_retry_overflow: 1
+// --------------------
+// RETRY 2 REACH UPSTREAM + RESPOND aggregate_cluster rq_retry_open: 1
+// RETRY 2 REACH UPSTREAM + RESPOND aggregate_cluster remaining_retries: 0
+// RETRY 2 REACH UPSTREAM + RESPOND aggregate_cluster upstream_rq_retry_overflow: 1
+// RETRY 2 REACH UPSTREAM + RESPOND cluster_1 rq_retry_open: 1
+// RETRY 2 REACH UPSTREAM + RESPOND cluster_1 remaining_retries: 0
+// RETRY 2 REACH UPSTREAM + RESPOND cluster_1 upstream_rq_retry_overflow: 1
 
 } // namespace
 } // namespace Envoy
