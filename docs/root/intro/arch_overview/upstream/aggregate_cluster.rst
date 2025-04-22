@@ -284,3 +284,16 @@ To sum this up in pseudo algorithms:
 In the second tier of load balancing, Envoy hands off traffic to the cluster selected in the first tier. That cluster
 can then apply any of the load balancing algorithms described in
 :ref:`load balancer type <arch_overview_load_balancing_types>`.
+
+
+Circuit Breakers
+^^^^^^^^^^^^^^^
+
+.. draft:
+
+.. the aggregate cluster and each of its underlying clusters maintain their own independent circuit breaker settings and states. 
+.. this separation allows the aggregate cluster to maintain its failover capabilities whilst respecting the limits of each underlying cluster.
+.. the aggregate cluster circuit breaker does not propagate circuit breaker states between its underlying clusters. if one underlying cluster's circuit breaker opens, traffic can still flow to other underlying clusters.
+.. when an underlying cluster's circuit breaker opens, requests routed through the aggregate cluster to that underlying cluster will be rejected.
+.. for the max_connections, max_requests, max_pending_requests circuit breakers only the underlying cluster's circuit breakers are opened when their limits are reached, the aggregate cluster's circuit breaker is totally unaffected.
+.. unlike the other circuit breaker types, the max_retries circuit breaker can open on the aggregate cluster, and when that happens it will prevent further retries to any of its underlying clusters.
