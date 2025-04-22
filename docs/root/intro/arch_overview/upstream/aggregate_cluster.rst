@@ -305,3 +305,11 @@ Circuit Breakers
 .. :ref:`max_pending_requests <envoy_v3_api_field_config.cluster.v3.CircuitBreakers.Thresholds.max_pending_requests>`
 .. :ref:`max_requests <envoy_v3_api_field_config.cluster.v3.CircuitBreakers.Thresholds.max_requests>`
 .. :ref:`max_retries <envoy_v3_api_field_config.cluster.v3.CircuitBreakers.Thresholds.max_retries>`
+
+.. https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/circuit_breaking
+.. the above is here:
+.. docs/root/intro/arch_overview/upstream/circuit_breaking.rst
+
+.. https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/cluster/v3/circuit_breaker.proto#config-cluster-v3-circuitbreakers-thresholds 
+.. the above is automatically generated from the contents of the proto file here:
+.. api/envoy/config/cluster/v3/circuit_breaker.proto
