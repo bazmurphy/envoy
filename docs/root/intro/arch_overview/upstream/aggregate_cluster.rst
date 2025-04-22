@@ -312,3 +312,5 @@ Unlike the other circuit breaker types, the :ref:`max_retries <envoy_v3_api_fiel
 .. https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/cluster/v3/circuit_breaker.proto#config-cluster-v3-circuitbreakers-thresholds 
 .. the above is automatically generated from the contents of the proto file here:
 .. api/envoy/config/cluster/v3/circuit_breaker.proto
+
+.. need to work out how to run the docs live(?) and also get them to format.. looking into this now..
