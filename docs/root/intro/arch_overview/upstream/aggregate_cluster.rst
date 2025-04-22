@@ -290,9 +290,9 @@ Circuit Breakers
 
 .. draft:
 
-The aggregate cluster and each of its underlying clusters maintain their own independent circuit breaker settings and states. 
+The aggregate cluster and each of its underlying clusters maintain their own independent circuit breaker settings and states.
 This separation allows the aggregate cluster to maintain its failover capabilities whilst respecting the limits of each underlying cluster.
-The aggregate cluster circuit breaker does not propagate circuit breaker states between its underlying clusters. 
+The aggregate cluster circuit breaker does not propagate circuit breaker states between its underlying clusters.
 If one underlying cluster's circuit breaker opens, traffic can still flow to other underlying clusters.
 When an underlying cluster's circuit breaker opens, requests routed through the aggregate cluster to that underlying cluster will be rejected.
 For the :ref:`max_connections <envoy_v3_api_field_config.cluster.v3.CircuitBreakers.Thresholds.max_connections>`, :ref:`max_requests <envoy_v3_api_field_config.cluster.v3.CircuitBreakers.Thresholds.max_requests>`, :ref:`max_pending_requests <envoy_v3_api_field_config.cluster.v3.CircuitBreakers.Thresholds.max_pending_requests>` circuit breakers only the underlying cluster's circuit breakers are opened when their limits are reached, the aggregate cluster's circuit breaker is totally unaffected.
@@ -308,8 +308,7 @@ Unlike the other circuit breaker types, the :ref:`max_retries <envoy_v3_api_fiel
 .. https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/circuit_breaking
 .. the above is here:
 .. docs/root/intro/arch_overview/upstream/circuit_breaking.rst
-
-.. https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/cluster/v3/circuit_breaker.proto#config-cluster-v3-circuitbreakers-thresholds 
+.. https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/cluster/v3/circuit_breaker.proto#config-cluster-v3-circuitbreakers-thresholds
 .. the above is automatically generated from the contents of the proto file here:
 .. api/envoy/config/cluster/v3/circuit_breaker.proto
 
@@ -317,6 +316,26 @@ Unlike the other circuit breaker types, the :ref:`max_retries <envoy_v3_api_fiel
 .. to build the docs:
 .. bazel run --//tools/tarball:target=//docs:html //tools/tarball:unpack "$PWD"/generated/docs/
 
+.. but that doesn't do the formatting, we need to use the same formatter used for the code
+.. % bazel run //tools/code_format:check_format -- fix && bazel run //tools/code:check -- fix -s main -v warn
+
+.. INFO: Analyzed target //tools/code_format:check_format (0 packages loaded, 0 targets configured).
+.. INFO: Found 1 target...
+.. Target //tools/code_format:check_format up-to-date:
+..   bazel-bin/tools/code_format/check_format
+.. INFO: Elapsed time: 0.265s, Critical Path: 0.05s
+.. INFO: 1 process: 1 internal.
+.. INFO: Build completed successfully, 1 total action
+.. INFO: Running command line: bazel-bin/tools/code_format/check_format '--path=/home/baz.murphy/demand-eng-envoy-upstream-changes/envoy' '--clang_format_path=tools/clang-format/clang-format' '--buildifier_path=external/com_github_bazelbuild_buildtools/buildifier/buildifier_/buildifier' '--buildozer_path=external/com_github_bazelbuild_buildtools/buildozer/buildozer_/buildozer' fix
+.. INFO: Analyzed target //tools/code:check (0 packages loaded, 0 targets configured).
+.. INFO: Found 1 target...
+.. Target //tools/code:check up-to-date:
+..   bazel-bin/tools/code/check
+..   bazel-bin/tools/code/rules_python_entry_point_check.py
+.. INFO: Elapsed time: 0.333s, Critical Path: 0.04s
+.. INFO: 1 process: 1 internal.
+.. INFO: Build completed successfully, 1 total action
+.. INFO: Running command line: bazel-bin/tools/code/check '--codeowners=./CODEOWNERS' '--owners=./OWNERS.md' '--extensions_build_config=tools/code/extensions_build_config.json' '--extensions_fuzzed_count=8' '--path=/home/baz.murphy/demand-eng-envoy-upstream-changes/envoy' -b shellcheck:external/shellcheck_linux_x86_64/shellcheck -b gofmt:external/go_sdk/bin/gofmt -x bazel/repo.bzl fix -s main -v warn
 .. CodeChecker ERROR [glint] Trailing whitespace: docs/root/intro/arch_overview/upstream/aggregate_cluster.rst
 .. CodeChecker ERROR [glint] Check failed
 .. CodeChecker ERROR ERRORS Summary [glint]:
@@ -331,4 +350,3 @@ Unlike the other circuit breaker types, the :ref:`max_retries <envoy_v3_api_fiel
 ..       - no trailing whitespace
 ..       - no preceding mixed tabs/spaces
 ..       - all files end with a newline
-
