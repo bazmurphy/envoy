@@ -313,4 +313,22 @@ Unlike the other circuit breaker types, the :ref:`max_retries <envoy_v3_api_fiel
 .. the above is automatically generated from the contents of the proto file here:
 .. api/envoy/config/cluster/v3/circuit_breaker.proto
 
-.. need to work out how to run the docs live(?) and also get them to format.. looking into this now..
+.. instructions in: docs/README.md
+.. to build the docs:
+.. bazel run --//tools/tarball:target=//docs:html //tools/tarball:unpack "$PWD"/generated/docs/
+
+.. CodeChecker ERROR [glint] Trailing whitespace: docs/root/intro/arch_overview/upstream/aggregate_cluster.rst
+.. CodeChecker ERROR [glint] Check failed
+.. CodeChecker ERROR ERRORS Summary [glint]:
+.. --------------------------------------------------------------------------------
+.. Trailing whitespace: docs/root/intro/arch_overview/upstream/aggregate_cluster.rst
+
+.. CodeChecker ERROR {'success': 856, 'errors': 1, 'warnings': 0, 'failed': {'glint': 1}, 'warned': {}, 'succeeded': {'extensions_fuzzed': 1, 'extensions_metadata': 302, 'extensions_registered': 1, 'runtime_guards': 77, 'changelog': 202, 'extensions_owners': 273}}
+.. CodeChecker ERROR Glint check failed
+
+..   Please fix your editor to ensure:
+
+..       - no trailing whitespace
+..       - no preceding mixed tabs/spaces
+..       - all files end with a newline
+
