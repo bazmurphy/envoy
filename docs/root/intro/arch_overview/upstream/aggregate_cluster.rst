@@ -108,19 +108,16 @@ doesn't exist at the top level.
 
 Circuit Breaking
 ^^^^^^^^^^^^^^^^^
-:ref:`Circuit Breakers <envoy_v3_api_msg_config.cluster.v3.circuitbreakers>` on the level of the aggregate cluster are not configurable. The only circuit breaker that is configured on the aggregate cluster's level is **max_retries**. 
+:ref:`Circuit Breakers <envoy_v3_api_msg_config.cluster.v3.circuitbreakers>` on the level of the aggregate cluster are not configurable. The only circuit breaker that is configured on the aggregate cluster's level is **max_retries**.
 
 This behavior is intentional as the underlying clusters are accessible through multiple paths (directly or via the aggregate cluster(s)), and configuring the circuit breakers at the level of the aggregate cluster will multiply the effective limit by the number of access paths. This would make the circuit breakers useless.
 
-Unlike other circuit breakers, the **max_retries** circuit breaker must be configured at the aggregate cluster level because when Envoy processes a retry request, it needs to determine whether the retry limit has been exceeded before it selects the underlying cluster. 
+Unlike other circuit breakers, the **max_retries** circuit breaker must be configured at the aggregate cluster level because when Envoy processes a retry request, it needs to determine whether the retry limit has been exceeded before it selects the underlying cluster.
 
 * For **max_connections**, **max_requests** and **max_pending_requests** when the configured limit is reached on the underlying cluster(s), only the underlying cluster(s)' circuit breaker opens. The aggregate cluster's circuit breaker remains closed at all times, regardless of whether the circuit breakers limits on the underlying cluster(s) are reached or not.
-
 * For **max_retries**:
-  
-  * when the requests through the aggregate cluster reach the aggregate cluster's `max_retries` limit, the aggregate cluster's circuit breaker opens and the underlying cluster(s)' circuit breakers remain closed. 
-  
-  * when the requests going directly to the underlying cluster(s) reach the underlying cluster(s) `max_retries` limit. The underlying cluster(s)' circuit breaker opens. 
+    * when the requests through the aggregate cluster reach the aggregate cluster's `max_retries` limit, the aggregate cluster's circuit breaker opens and the underlying cluster(s)' circuit breakers remain closed.
+    * when the requests going directly to the underlying cluster(s) reach the underlying cluster(s) `max_retries` limit. The underlying cluster(s)' circuit breaker opens.
 
 Load Balancing Example
 ----------------------
