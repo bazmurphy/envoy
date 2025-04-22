@@ -297,3 +297,11 @@ Circuit Breakers
 .. when an underlying cluster's circuit breaker opens, requests routed through the aggregate cluster to that underlying cluster will be rejected.
 .. for the max_connections, max_requests, max_pending_requests circuit breakers only the underlying cluster's circuit breakers are opened when their limits are reached, the aggregate cluster's circuit breaker is totally unaffected.
 .. unlike the other circuit breaker types, the max_retries circuit breaker can open on the aggregate cluster, and when that happens it will prevent further retries to any of its underlying clusters.
+
+
+.. links we probably need to use:
+
+.. :ref:`max_connections <envoy_v3_api_field_config.cluster.v3.CircuitBreakers.Thresholds.max_connections>`
+.. :ref:`max_pending_requests <envoy_v3_api_field_config.cluster.v3.CircuitBreakers.Thresholds.max_pending_requests>`
+.. :ref:`max_requests <envoy_v3_api_field_config.cluster.v3.CircuitBreakers.Thresholds.max_requests>`
+.. :ref:`max_retries <envoy_v3_api_field_config.cluster.v3.CircuitBreakers.Thresholds.max_retries>`
