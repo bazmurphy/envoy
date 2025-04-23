@@ -284,3 +284,12 @@ To sum this up in pseudo algorithms:
 In the second tier of load balancing, Envoy hands off traffic to the cluster selected in the first tier. That cluster
 can then apply any of the load balancing algorithms described in
 :ref:`load balancer type <arch_overview_load_balancing_types>`.
+
+Circuit Breakers
+^^^^^^^^^^^^^^^^
+
+In general, an aggregate cluster should be thought of as a cluster that groups the endpoints of the underlying clusters together for load balancing purposes only, not for circuit breaking which is handled at the level of the underlying clusters, not at the level of the aggregate cluster itself. This allows the aggregate cluster to maintain its failover capabilities whilst respecting the circuit breaker limits of each underlying cluster. This is intentional as the underlying clusters are accessible through multiple paths (directly or via the aggregate cluster) and configuring aggregate cluster circuit breakers would effectively double the circuit breaker limits rendering them useless.
+
+When the configured limit is reached on the underlying cluster(s) only the underlying cluster(s)' circuit breaker opens. When an underlying cluster's circuit breaker opens, requests routed through the aggregate cluster to that underlying cluster will be rejected. The aggregate cluster's circuit breaker remains closed at all times, regardless of whether the circuit breaker(s) limits on the underlying cluster(s) are reached or not.
+
+As an exception, the only circuit breaker configured at the aggregate cluster level is max_retries[link] because when Envoy processes a retry request, it needs to determine whether the retry limit has been exceeded before the aggregate cluster is able to choose the underlying cluster to use. When the configured limit is reached the aggregate cluster's circuit breaker opens, and subsequent requests to the aggregate cluster path cannot retry, even though the underlying cluster's retry budget is still available.
