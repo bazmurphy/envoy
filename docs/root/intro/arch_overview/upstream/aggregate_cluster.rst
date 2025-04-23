@@ -286,67 +286,10 @@ can then apply any of the load balancing algorithms described in
 :ref:`load balancer type <arch_overview_load_balancing_types>`.
 
 Circuit Breakers
-^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^
 
-.. draft:
+In general, an aggregate cluster should be thought of as a cluster that groups the endpoints of the underlying clusters together for load balancing purposes only, not for circuit breaking which is handled at the level of the underlying clusters, not at the level of the aggregate cluster itself. This allows the aggregate cluster to maintain its failover capabilities whilst respecting the circuit breaker limits of each underlying cluster. This is intentional as the underlying clusters are accessible through multiple paths (directly or via the aggregate cluster) and configuring aggregate cluster circuit breakers would effectively double the circuit breaker limits rendering them useless.
 
-The aggregate cluster and each of its underlying clusters maintain their own independent circuit breaker settings and states.
-This separation allows the aggregate cluster to maintain its failover capabilities whilst respecting the limits of each underlying cluster.
-The aggregate cluster circuit breaker does not propagate circuit breaker states between its underlying clusters.
-If one underlying cluster's circuit breaker opens, traffic can still flow to other underlying clusters.
-When an underlying cluster's circuit breaker opens, requests routed through the aggregate cluster to that underlying cluster will be rejected.
-For the :ref:`max_connections <envoy_v3_api_field_config.cluster.v3.CircuitBreakers.Thresholds.max_connections>`, :ref:`max_requests <envoy_v3_api_field_config.cluster.v3.CircuitBreakers.Thresholds.max_requests>`, :ref:`max_pending_requests <envoy_v3_api_field_config.cluster.v3.CircuitBreakers.Thresholds.max_pending_requests>` circuit breakers only the underlying cluster's circuit breakers are opened when their limits are reached, the aggregate cluster's circuit breaker is totally unaffected.
-Unlike the other circuit breaker types, the :ref:`max_retries <envoy_v3_api_field_config.cluster.v3.CircuitBreakers.Thresholds.max_retries>` circuit breaker can open on the aggregate cluster, and will prevent further retries to any of its underlying clusters.
+When the configured limit is reached on the underlying cluster(s) only the underlying cluster(s)' circuit breaker opens. When an underlying cluster's circuit breaker opens, requests routed through the aggregate cluster to that underlying cluster will be rejected. The aggregate cluster's circuit breaker remains closed at all times, regardless of whether the circuit breaker(s) limits on the underlying cluster(s) are reached or not.
 
-.. links we probably need to use:
-
-.. :ref:`max_connections <envoy_v3_api_field_config.cluster.v3.CircuitBreakers.Thresholds.max_connections>`
-.. :ref:`max_pending_requests <envoy_v3_api_field_config.cluster.v3.CircuitBreakers.Thresholds.max_pending_requests>`
-.. :ref:`max_requests <envoy_v3_api_field_config.cluster.v3.CircuitBreakers.Thresholds.max_requests>`
-.. :ref:`max_retries <envoy_v3_api_field_config.cluster.v3.CircuitBreakers.Thresholds.max_retries>`
-
-.. https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/circuit_breaking
-.. the above is here:
-.. docs/root/intro/arch_overview/upstream/circuit_breaking.rst
-.. https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/cluster/v3/circuit_breaker.proto#config-cluster-v3-circuitbreakers-thresholds
-.. the above is automatically generated from the contents of the proto file here:
-.. api/envoy/config/cluster/v3/circuit_breaker.proto
-
-.. instructions in: docs/README.md
-.. to build the docs:
-.. bazel run --//tools/tarball:target=//docs:html //tools/tarball:unpack "$PWD"/generated/docs/
-
-.. but that doesn't do the formatting, we need to use the same formatter used for the code
-.. % bazel run //tools/code_format:check_format -- fix && bazel run //tools/code:check -- fix -s main -v warn
-
-.. INFO: Analyzed target //tools/code_format:check_format (0 packages loaded, 0 targets configured).
-.. INFO: Found 1 target...
-.. Target //tools/code_format:check_format up-to-date:
-..   bazel-bin/tools/code_format/check_format
-.. INFO: Elapsed time: 0.265s, Critical Path: 0.05s
-.. INFO: 1 process: 1 internal.
-.. INFO: Build completed successfully, 1 total action
-.. INFO: Running command line: bazel-bin/tools/code_format/check_format '--path=/home/baz.murphy/demand-eng-envoy-upstream-changes/envoy' '--clang_format_path=tools/clang-format/clang-format' '--buildifier_path=external/com_github_bazelbuild_buildtools/buildifier/buildifier_/buildifier' '--buildozer_path=external/com_github_bazelbuild_buildtools/buildozer/buildozer_/buildozer' fix
-.. INFO: Analyzed target //tools/code:check (0 packages loaded, 0 targets configured).
-.. INFO: Found 1 target...
-.. Target //tools/code:check up-to-date:
-..   bazel-bin/tools/code/check
-..   bazel-bin/tools/code/rules_python_entry_point_check.py
-.. INFO: Elapsed time: 0.333s, Critical Path: 0.04s
-.. INFO: 1 process: 1 internal.
-.. INFO: Build completed successfully, 1 total action
-.. INFO: Running command line: bazel-bin/tools/code/check '--codeowners=./CODEOWNERS' '--owners=./OWNERS.md' '--extensions_build_config=tools/code/extensions_build_config.json' '--extensions_fuzzed_count=8' '--path=/home/baz.murphy/demand-eng-envoy-upstream-changes/envoy' -b shellcheck:external/shellcheck_linux_x86_64/shellcheck -b gofmt:external/go_sdk/bin/gofmt -x bazel/repo.bzl fix -s main -v warn
-.. CodeChecker ERROR [glint] Trailing whitespace: docs/root/intro/arch_overview/upstream/aggregate_cluster.rst
-.. CodeChecker ERROR [glint] Check failed
-.. CodeChecker ERROR ERRORS Summary [glint]:
-.. --------------------------------------------------------------------------------
-.. Trailing whitespace: docs/root/intro/arch_overview/upstream/aggregate_cluster.rst
-
-.. CodeChecker ERROR {'success': 856, 'errors': 1, 'warnings': 0, 'failed': {'glint': 1}, 'warned': {}, 'succeeded': {'extensions_fuzzed': 1, 'extensions_metadata': 302, 'extensions_registered': 1, 'runtime_guards': 77, 'changelog': 202, 'extensions_owners': 273}}
-.. CodeChecker ERROR Glint check failed
-
-..   Please fix your editor to ensure:
-
-..       - no trailing whitespace
-..       - no preceding mixed tabs/spaces
-..       - all files end with a newline
+As an exception, the only circuit breaker configured at the aggregate cluster level is max_retries[link] because when Envoy processes a retry request, it needs to determine whether the retry limit has been exceeded before the aggregate cluster is able to choose the underlying cluster to use. When the configured limit is reached the aggregate cluster's circuit breaker opens, and subsequent requests to the aggregate cluster path cannot retry, even though the underlying cluster's retry budget is still available.
