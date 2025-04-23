@@ -121,11 +121,11 @@ selects the underlying cluster.
 
 * For **max_connections**, **max_requests** and **max_pending_requests**:
   when the configured limit is reached on the underlying cluster(s), only the underlying cluster(s)' circuit breaker opens. The aggregate cluster's circuit breaker remains closed at all times, regardless of whether the circuit breakers limits on the underlying cluster(s) are reached or not.
+
 * For **max_retries**:
-  when the requests through the aggregate cluster reach the aggregate cluster's `max_retries`
-  limit, the aggregate cluster's circuit breaker opens and the underlying cluster(s)' circuit breakers remain closed.
-  when the requests going directly to the underlying cluster(s) reach the underlying cluster(s) `max_retries`limit. The
-  underlying cluster(s)' circuit breaker opens.
+  when the requests through the aggregate cluster reach the aggregate cluster's `max_retries` limit, the aggregate
+  cluster's circuit breaker opens and the underlying cluster(s)' circuit breakers remain closed. when the requests going directly to the underlying cluster(s) reach the underlying cluster(s) `max_retries` limit. The underlying
+  cluster(s)' circuit breaker opens.
 
 Load Balancing Example
 ----------------------
